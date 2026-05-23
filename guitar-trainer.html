@@ -1,0 +1,1920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guitar Trainer</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#122b58;--bg2:#162f62;--bg3:#1c3570;--border:#3e6aa0;
+  --text:#f5f8ff;--muted:#88acd8;--accent:#f5c028;
+  --C:#4F8EF7;--A:#E8593C;--G:#3BAF7E;--E:#E8A020;--D:#9B5CF6;
+  --success:#3BAF7E;--danger:#E8593C;--r:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;overflow:hidden;
+          -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+
+/* ── TOP-LEVEL LAYOUT ────────────────────────────────────────
+   body = two rows: [nav-row] + [content-row fills rest]
+   nav-row has a blank left spacer + the actual nav on the right
+   content-row has fretboard | roman | chart (all full height)
+*/
+body{display:flex;flex-direction:column}  /* content-row is only child */
+
+/* NAV BAR — top of chart panel, left-aligned with chart */
+#nav-bar{display:flex;align-items:center;gap:10px;padding:8px 16px 8px 20px;
+         flex-shrink:0;border-bottom:1px solid var(--border);flex-wrap:nowrap;overflow:visible}
+
+.btn{padding:7px 16px;border:1px solid var(--border);border-radius:var(--r);
+     background:var(--bg2);color:var(--text);cursor:pointer;font-size:15px;
+     font-family:'DM Sans',sans-serif;transition:all .15s;white-space:nowrap;line-height:1.4}
+.btn:hover{background:var(--bg3)}
+.btn.primary{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:500}
+.btn.primary:hover{opacity:.88}
+.btn.danger{border-color:var(--danger);color:var(--danger);background:rgba(232,89,60,.08)}
+.btn.active{background:var(--bg3);border-color:var(--accent);color:var(--accent)}
+.bpm-wrap{display:flex;align-items:center;gap:6px}
+.bpm-num{font-family:'Space Mono',monospace;font-size:20px;color:var(--text);min-width:36px;text-align:center}
+.bpm-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.count-in{font-family:'Space Mono',monospace;font-size:22px;color:var(--accent);min-width:20px;text-align:center}
+.mode-btns{display:flex;gap:2px;background:var(--bg);padding:2px;border-radius:4px;border:1px solid var(--border)}
+.mbtn{padding:6px 12px;font-size:14px;color:var(--muted);cursor:pointer;border-radius:3px;
+      transition:all .12s;border:none;background:none;font-family:'DM Sans',sans-serif}
+.mbtn.on{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+select.ctrl{padding:6px 10px;border:1px solid var(--border);border-radius:var(--r);
+            background:var(--bg2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px}
+
+/* DROPDOWN — panels open downward, z above content */
+.dd-wrap{position:relative}
+.dd-panel{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:1000;
+          background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+          padding:16px;min-width:260px;box-shadow:0 12px 32px rgba(0,0,0,.6)}
+.dd-panel.show{display:block}
+.dd-sep{font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;
+        letter-spacing:.08em;margin:12px 0 8px;padding-top:12px;border-top:1px solid var(--border)}
+.dd-sep:first-child{margin-top:0;padding-top:0;border-top:none}
+.dd-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.dd-row:last-child{margin-bottom:0}
+.dd-row input[type=range]{flex:1;min-width:0}
+.dd-val{font-size:13px;color:var(--muted);min-width:36px;text-align:right;font-family:'Space Mono',monospace}
+
+/* CONTENT ROW — fills all remaining vertical space */
+#content-row{flex:1;display:flex;overflow:hidden;min-height:0}
+
+/* ── FRETBOARD PANEL ─────────────────────────────────────────
+   Width is set dynamically by JS to match canvas aspect ratio.
+   Canvas fills the full height of content-row.
+*/
+#fb-panel{flex-shrink:0;border-right:none;
+          display:flex;flex-direction:column;overflow:hidden;position:relative}
+#fb-key-label{position:absolute;top:6px;left:0;right:0;text-align:center;
+              font-family:'Space Mono',monospace;font-size:20px;font-weight:700;
+              color:var(--muted);line-height:1;z-index:10;pointer-events:none}
+#fb-wrap{flex:1;overflow:hidden;display:flex;align-items:flex-start;justify-content:center;padding:4px 0}
+canvas#fb{display:block;flex-shrink:0}
+
+/* ── ROMAN NUMERAL PANEL ─────────────────────────────────────
+   Sits right of fretboard. #roman-inner tracks the locked form
+   position vertically via JS; defaults to vertically centered.
+*/
+#roman-panel{width:88px;flex-shrink:0;border-left:1px solid var(--border);border-right:1px solid var(--border);
+             position:relative;overflow:visible}
+#roman-inner{position:absolute;left:0;right:0;
+             display:flex;flex-direction:column;align-items:center;gap:10px;
+             padding:0 8px;transform:translateY(-50%);
+             transition:top .25s ease;pointer-events:none}
+#roman-key-box{font-family:'Space Mono',monospace;font-size:26px;font-weight:700;
+               color:var(--muted);width:52px;height:52px;
+               display:flex;align-items:center;justify-content:center;
+               border:2px solid var(--border);border-radius:var(--r);
+               background:var(--bg3);line-height:1;letter-spacing:-.02em;
+               position:absolute;top:26%;left:50%;transform:translateX(-50%);
+               pointer-events:none}
+#roman-display{font-family:'Space Mono',monospace;font-size:28px;font-weight:700;
+               color:var(--accent);line-height:1;letter-spacing:-.02em;
+               text-align:center}
+#roman-chord-tonic{font-family:'Space Mono',monospace;font-size:26px;font-weight:700;
+                   color:var(--accent);width:52px;height:52px;
+                   display:flex;align-items:center;justify-content:center;
+                   border:2px solid rgba(245,192,40,0.4);border-radius:var(--r);
+                   background:var(--bg3);line-height:1;letter-spacing:-.02em}
+
+/* ── CHART PANEL ─────────────────────────────────────────────
+   Right of roman panel. Has nav-row height gap at top (via padding)
+   so chord track lines up with the right edge of the nav bar.
+   Actually: chart-panel sits inside content-row which starts below nav.
+   So no extra offset needed — it naturally aligns.
+*/
+#chart-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* Grid chart — real lead sheet layout */
+#scroll-area{flex:1;overflow-y:auto;overflow-x:hidden;background:var(--bg);position:relative;min-height:0}
+#chart-grid{display:grid;padding:14px 16px 14px 20px;gap:0;width:100%}
+/* rows and cols set by JS based on chord count and available space */
+.chart-row{display:contents}
+.chord-cell{display:flex;flex-direction:column;justify-content:center;
+            border:1px solid var(--border);padding:10px 14px;
+            min-height:70px;cursor:pointer;position:relative;background:var(--bg);
+            transition:background .1s}
+.chord-cell:hover{background:var(--bg2)}
+.chord-cell.current{background:rgba(212,168,67,.1);border-color:rgba(212,168,67,.4)}
+.chord-cell.bar-start{border-left:2px solid var(--border)}
+.chord-cell.current.bar-start{border-left-color:var(--accent)}
+.chord-name{font-family:'Space Mono',monospace;font-size:22px;font-weight:700;
+            color:var(--text);line-height:1}
+.rn-span{font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);
+         cursor:pointer;padding:2px 4px;border-radius:3px;border:1px solid transparent;
+         transition:border-color .12s,color .12s;line-height:1;display:inline-block;margin-top:3px}
+.rn-span:hover{border-color:var(--border);color:var(--accent)}
+.rn-span.rn-override{color:var(--accent);border-color:rgba(212,168,67,.3)}
+.chord-cell.current .chord-name{color:var(--accent)}
+.chord-beats{font-size:10px;color:var(--muted);margin-top:3px}
+.beat-dots{display:flex;gap:3px;margin-top:6px}
+.beat-dot{width:5px;height:5px;border-radius:50%;background:var(--border)}
+.beat-dot.on{background:var(--accent)}
+.time-sig-badge{font-family:'Space Mono',monospace;font-size:18px;font-weight:700;
+                color:var(--muted);display:flex;flex-direction:column;
+                align-items:center;line-height:1.1;padding-right:4px;
+                border-right:2px solid var(--border);margin-right:2px;
+                flex-shrink:0;align-self:stretch;justify-content:center}
+.time-sig-badge span{font-size:10px}
+/* row number label on left of each row */
+.row-label{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);
+           display:flex;align-items:center;padding:0 6px 0 2px;flex-shrink:0}
+
+/* Chart editor — collapsible drawer anchored to bottom */
+#editor-area{flex-shrink:0;display:flex;flex-direction:column;border-top:1px solid var(--border)}
+#editor-toggle{padding:7px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;
+               user-select:none;background:var(--bg2);flex-shrink:0}
+#editor-toggle:hover{background:var(--bg3)}
+#editor-toggle-label{font-size:11px;font-weight:600;color:var(--muted);
+                     text-transform:uppercase;letter-spacing:.08em;flex:1}
+#editor-toggle-arrow{font-size:11px;color:var(--muted);transition:transform .15s}
+#editor-toggle-arrow.open{transform:rotate(180deg)}
+#editor-body{display:none;flex-direction:column}
+#editor-body.open{display:flex}
+#editor-instructions{padding:6px 14px;font-size:11px;color:var(--muted);
+                     line-height:1.5;background:var(--bg2);border-top:1px solid var(--border)}
+#chart-editor{height:80px;min-height:60px;max-height:110px;background:var(--bg2);
+              color:var(--text);font-family:'Space Mono',monospace;font-size:12px;
+              line-height:1.7;padding:8px 14px;border:none;
+              border-top:1px solid var(--border);resize:vertical;outline:none;
+              overflow-y:auto;flex-shrink:0}
+#chart-editor::placeholder{color:var(--muted)}
+#editor-bar{padding:7px 14px;border-top:1px solid var(--border);display:flex;
+            align-items:center;gap:8px;flex-shrink:0;background:var(--bg2)}
+.hint{font-size:12px;color:var(--muted)}
+
+/* hidden legacy */
+#chord-display{display:none}
+
+/* Mic overlay */
+#mic-overlay{display:none;position:fixed;bottom:0;right:0;width:260px;background:var(--bg2);
+             border:1px solid var(--border);border-radius:var(--r) var(--r) 0 0;
+             padding:12px;z-index:500}
+#mic-overlay.on{display:block}
+.mic-note-big{font-family:'Space Mono',monospace;font-size:48px;color:var(--text);line-height:1}
+.in-arp{color:var(--success);font-size:13px;font-weight:500}
+.out-arp{color:var(--muted);font-size:13px}
+.level-bar{height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;margin:6px 0}
+.level-fill{height:100%;width:0;background:var(--accent);border-radius:2px;transition:width .05s}
+.apill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;
+       background:var(--bg3);color:var(--muted);border:1px solid var(--border);margin:2px;
+       font-family:'Space Mono',monospace}
+.apill.lit{background:rgba(59,175,126,.2);border-color:rgba(59,175,126,.5);color:var(--success)}
+</style>
+</head>
+<body>
+
+<!-- CONTENT ROW: fills full height -->
+<div id="content-row">
+
+  <!-- Fretboard — width set by JS to match canvas aspect ratio -->
+  <div id="fb-panel">
+    <div id="fb-key-label">—</div>
+    <div id="fb-wrap"><canvas id="fb"></canvas></div>
+  </div>
+
+  <!-- Roman numeral — vertically centered, right of fretboard -->
+  <div id="roman-panel">
+    <div id="roman-inner">
+      <div id="roman-display">—</div>
+      <div id="roman-chord-tonic">—</div>
+    </div>
+  </div>
+
+  <!-- Chart panel: nav bar + chart grid + collapsible editor -->
+  <div id="chart-panel">
+    <div id="nav-bar">
+    <button class="btn primary" id="play-btn" onclick="togglePlay()">▶ Play</button>
+    <button class="btn" id="pause-btn" onclick="togglePause()" style="display:none">⏸ Pause</button>
+    <div class="bpm-wrap">
+      <button class="btn" onclick="changeBpm(-5)" style="padding:5px 9px">−</button>
+      <div style="text-align:center">
+        <div class="bpm-num" id="bpm-display">100</div>
+        <div class="bpm-label">BPM</div>
+      </div>
+      <button class="btn" onclick="changeBpm(5)" style="padding:5px 9px">+</button>
+    </div>
+    <div class="count-in" id="count-display"></div>
+
+    <!-- Sound dropdown -->
+    <div class="dd-wrap" id="dd-sound">
+      <button class="btn" onclick="dd('dd-sound')">Sound ▾</button>
+      <div class="dd-panel">
+        <div class="dd-sep">Click volume</div>
+        <div class="dd-row">
+          <input type="range" min="0" max="1" step="0.05" value="0.6" id="metro-vol"
+            oninput="document.getElementById('metro-vol-out').textContent=Math.round(this.value*100)+'%'">
+          <span class="dd-val" id="metro-vol-out">60%</span>
+        </div>
+        <div class="dd-sep">Chord volume</div>
+        <div class="dd-row">
+          <input type="range" min="0" max="1" step="0.05" value="0.7" id="chord-vol"
+            oninput="document.getElementById('chord-vol-out').textContent=Math.round(this.value*100)+'%'">
+          <span class="dd-val" id="chord-vol-out">70%</span>
+        </div>
+        <div class="dd-sep">Chord rhythm</div>
+        <div class="dd-row">
+          <div class="mode-btns">
+            <button class="mbtn on" id="cr-whole" onclick="setChordRhythm('whole')" title="Whole measure">—</button>
+            <button class="mbtn" id="cr-quarter" onclick="setChordRhythm('quarter')" title="Quarter vamp">♩♩♩♩</button>
+            <button class="mbtn" id="cr-3-1" onclick="setChordRhythm('3-1')" title="3+1">♩♩♩·♩</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Overlays dropdown -->
+    <div class="dd-wrap" id="dd-overlays">
+      <button class="btn" onclick="dd('dd-overlays')">Overlays ▾</button>
+      <div class="dd-panel">
+        <div class="dd-sep">Arpeggio</div>
+        <div class="dd-row">
+          <button class="btn" id="arp-btn" onclick="toggleArp()" style="padding:4px 10px;font-size:12px">Off</button>
+          <div class="mode-btns">
+            <button class="mbtn on" id="arp-up" onclick="setArpDir('up')">↑</button>
+            <button class="mbtn" id="arp-updown" onclick="setArpDir('updown')">↑↓</button>
+            <button class="mbtn" id="arp-rand" onclick="setArpDir('rand')">?</button>
+          </div>
+        </div>
+        <div class="dd-row">
+          <input type="range" min="0" max="1" step="0.05" value="0.5" id="arp-vol"
+            oninput="document.getElementById('arp-vol-out').textContent=Math.round(this.value*100)+'%'">
+          <span class="dd-val" id="arp-vol-out">50%</span>
+        </div>
+        <div class="dd-sep">Walking bass</div>
+        <div class="dd-row">
+          <button class="btn" id="bass-btn" onclick="toggleBass()" style="padding:4px 10px;font-size:12px">Off</button>
+          <div class="mode-btns">
+            <button class="mbtn on" id="bass-chord" onclick="setBassStyle('chord')">Chord</button>
+            <button class="mbtn" id="bass-chromatic" onclick="setBassStyle('chromatic')">Chrom</button>
+          </div>
+        </div>
+        <div class="dd-row">
+          <input type="range" min="0" max="1" step="0.05" value="0.6" id="bass-vol"
+            oninput="document.getElementById('bass-vol-out').textContent=Math.round(this.value*100)+'%'">
+          <span class="dd-val" id="bass-vol-out">60%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fretboard dropdown -->
+    <div class="dd-wrap" id="dd-fretboard">
+      <button class="btn" onclick="dd('dd-fretboard')">Fretboard ▾</button>
+      <div class="dd-panel">
+        <div class="dd-sep">Notes shown</div>
+        <div class="dd-row">
+          <div class="mode-btns">
+            <button class="mbtn on" id="mb-arp" onclick="setMode('arp')">Arpeggio</button>
+            <button class="mbtn" id="mb-scale" onclick="setMode('scale')">Scale</button>
+          </div>
+        </div>
+        <div class="dd-sep">CAGED shape</div>
+        <div class="dd-row">
+          <div class="mode-btns">
+            <button class="mbtn on" id="hb-all" onclick="selShape('all')">All</button>
+            <button class="mbtn" id="hb-C" onclick="selShape('C')">C</button>
+            <button class="mbtn" id="hb-A" onclick="selShape('A')">A</button>
+            <button class="mbtn" id="hb-G" onclick="selShape('G')">G</button>
+            <button class="mbtn" id="hb-E" onclick="selShape('E')">E</button>
+            <button class="mbtn" id="hb-D" onclick="selShape('D')">D</button>
+          </div>
+        </div>
+        <div class="dd-sep">Position lock <span style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(anchors to tonic)</span></div>
+        <div class="dd-row">
+          <div class="mode-btns">
+            <button class="mbtn on" id="pos-free" onclick="selPosition('free')">Free</button>
+            <button class="mbtn" id="pos-C" onclick="selPosition('C')">C</button>
+            <button class="mbtn" id="pos-A" onclick="selPosition('A')">A</button>
+            <button class="mbtn" id="pos-G" onclick="selPosition('G')">G</button>
+            <button class="mbtn" id="pos-E" onclick="selPosition('E')">E</button>
+            <button class="mbtn" id="pos-D" onclick="selPosition('D')">D</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tuning dropdown -->
+    <div class="dd-wrap" id="dd-tuning">
+      <button class="btn" onclick="dd('dd-tuning')">Tuning ▾</button>
+      <div class="dd-panel" style="min-width:160px">
+        <div class="dd-sep">Key <span style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(auto-detected, click to override)</span></div>
+        <div class="dd-row">
+          <span style="font-family:'Space Mono',monospace;font-size:22px;color:var(--accent);margin-right:8px" id="key-display">—</span>
+          <button class="mbtn" onclick="setKey(detectedKey,detectedKeyMinor)" style="font-size:10px;padding:2px 6px">Auto</button>
+        </div>
+        <div class="dd-row" style="flex-wrap:wrap;gap:3px">
+          <button class="mbtn" id="kbtn-C"  onclick="setKey('C',false)"  >C</button>
+          <button class="mbtn" id="kbtn-Cs" onclick="setKey('C#',false)" >C#</button>
+          <button class="mbtn" id="kbtn-D"  onclick="setKey('D',false)"  >D</button>
+          <button class="mbtn" id="kbtn-Ds" onclick="setKey('D#',false)" >D#</button>
+          <button class="mbtn" id="kbtn-E"  onclick="setKey('E',false)"  >E</button>
+          <button class="mbtn" id="kbtn-F"  onclick="setKey('F',false)"  >F</button>
+          <button class="mbtn" id="kbtn-Fs" onclick="setKey('F#',false)" >F#</button>
+          <button class="mbtn" id="kbtn-G"  onclick="setKey('G',false)"  >G</button>
+          <button class="mbtn" id="kbtn-Gs" onclick="setKey('G#',false)" >G#</button>
+          <button class="mbtn" id="kbtn-A"  onclick="setKey('A',false)"  >A</button>
+          <button class="mbtn" id="kbtn-As" onclick="setKey('A#',false)" >A#</button>
+          <button class="mbtn" id="kbtn-B"  onclick="setKey('B',false)"  >B</button>
+        </div>
+        <div class="dd-row" style="flex-wrap:wrap;gap:3px">
+          <button class="mbtn" onclick="setKey('A',true)"  >Am</button>
+          <button class="mbtn" onclick="setKey('B',true)"  >Bm</button>
+          <button class="mbtn" onclick="setKey('C',true)"  >Cm</button>
+          <button class="mbtn" onclick="setKey('D',true)"  >Dm</button>
+          <button class="mbtn" onclick="setKey('E',true)"  >Em</button>
+          <button class="mbtn" onclick="setKey('F',true)"  >Fm</button>
+          <button class="mbtn" onclick="setKey('F#',true)" >F#m</button>
+          <button class="mbtn" onclick="setKey('G',true)"  >Gm</button>
+        </div>
+        <div class="dd-sep">Reference tone</div>
+        <div class="dd-row">
+          <button class="btn" id="tune-btn" onclick="toggleTuneA()" style="font-family:'Space Mono',monospace;font-weight:700;width:100%">A 440</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn" onclick="resetAllRomans()" title="Reset all Roman numeral overrides" style="font-size:11px;padding:5px 10px">↺ Romans</button>
+    <button class="btn" id="mic-btn" onclick="toggleMic()" style="margin-left:auto">🎙 Mic</button>
+    </div><!-- end nav-bar -->
+    <div id="scroll-area">
+      <div id="chart-grid"></div>
+    </div>
+    <div id="editor-area">
+      <div id="editor-toggle" onclick="toggleEditor()">
+        <span id="editor-toggle-label">Chart Editor</span>
+        <span id="editor-toggle-arrow">▲</span>
+      </div>
+      <div id="editor-body">
+        <div id="editor-instructions">
+          Upload lead sheet photo → Claude formats it → Paste below → <b style="color:var(--accent)">⟳ Load Chart</b> &nbsp;·&nbsp; Use <b style="color:var(--accent)">[C]</b>, <b style="color:var(--accent)">[Am]</b>, <b style="color:var(--accent)">[Bb]</b> etc. on its own line to mark key changes
+        </div>
+        <textarea id="chart-editor" placeholder="4/4&#10;[C]&#10;Dm7 | G7  | Cmaj7 | Cmaj7&#10;[G]&#10;Am7 | D7  | Gmaj7 | Gmaj7"></textarea>
+        <div id="editor-bar">
+          <select id="chart-select" class="ctrl" onchange="loadSavedChart()" style="max-width:150px">
+            <option value="">— Saved charts —</option>
+          </select>
+          <button class="btn" onclick="saveChart()">Save</button>
+          <button class="btn" onclick="deleteChart()" style="color:var(--danger)">Del</button>
+          <span class="hint" id="save-hint" style="margin-left:4px"></span>
+          <button class="btn primary" onclick="parseAndLoad()" style="margin-left:auto">⟳ Load Chart</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="mic-overlay">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+    <span style="font-size:11px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Mic</span>
+    <button class="btn" onclick="toggleMic()" style="padding:2px 8px;font-size:12px">×</button>
+  </div>
+  <div class="level-bar"><div class="level-fill" id="m-level"></div></div>
+  <div class="mic-note-big" id="m-note">—</div>
+  <div id="m-inarp" class="out-arp">—</div>
+  <div style="margin-top:6px" id="m-pills"></div>
+</div>
+
+<script>
+// ─── DROPDOWN ───────────────────────────────────────────────
+function dd(id) {
+  const wrap = document.getElementById(id);
+  const panel = wrap.querySelector('.dd-panel');
+  const isOpen = panel.classList.contains('show');
+  // close all
+  document.querySelectorAll('.dd-panel.show').forEach(p => p.classList.remove('show'));
+  if (!isOpen) {
+    // flip to left-opening if wrap is in right half of screen
+    const wrapRect = wrap.getBoundingClientRect();
+    if (wrapRect.left > window.innerWidth / 2) {
+      panel.style.left = 'auto'; panel.style.right = '0';
+    } else {
+      panel.style.left = '0'; panel.style.right = 'auto';
+    }
+    panel.classList.add('show');
+  }
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.dd-wrap')) {
+    document.querySelectorAll('.dd-panel.show').forEach(p => p.classList.remove('show'));
+  }
+});
+
+// ─── EDITOR TOGGLE ──────────────────────────────────────────
+let editorOpen = false;
+function toggleEditor() {
+  editorOpen = !editorOpen;
+  document.getElementById('editor-body').classList.toggle('open', editorOpen);
+  document.getElementById('editor-toggle-arrow').classList.toggle('open', editorOpen);
+}
+
+// ─── MUSIC THEORY ───────────────────────────────────────────
+const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const ENHARMONIC = {Db:'C#',Eb:'D#',Gb:'F#',Ab:'G#',Bb:'A#','C#':'Db','D#':'Eb','F#':'Gb','G#':'Ab','A#':'Bb'};
+function noteIdx(n){ return NOTES.indexOf(ENHARMONIC[n]||n); }
+function noteName(i){ return NOTES[((i%12)+12)%12]; }
+
+const CHORD_INTERVALS = {
+  '':    [0,4,7],   'm':   [0,3,7],   'dim': [0,3,6],  'aug': [0,4,8],
+  'sus2':[0,2,7],   'sus4':[0,5,7],   'maj7':[0,4,7,11],'7':  [0,4,7,10],
+  'm7':  [0,3,7,10],'mM7': [0,3,7,11],'dim7':[0,3,6,9], 'm7b5':[0,3,6,10],
+  'ø7':  [0,3,6,10],'ø':   [0,3,6,10],'9':   [0,4,7,10,14],'maj9':[0,4,7,11,14],
+  'm9':  [0,3,7,10,14],'6':[0,4,7,9], 'm6':  [0,3,7,9], '+':  [0,4,8],
+  '7b9': [0,4,7,10,13],'7#9':[0,4,7,10,15],'7b5':[0,4,6,10],
+  '7#5': [0,4,8,10],  '7alt':[0,4,7,10,13],
+};
+
+function getPentatonic(r){ return [0,3,5,7,10].map(i=>(r+i)%12); }
+function getMajorScale(r){ return [0,2,4,5,7,9,11].map(i=>(r+i)%12); }
+function getMinorScale(r){ return [0,2,3,5,7,8,10].map(i=>(r+i)%12); }
+
+function getChordTones(chord, mode) {
+  const p = parseChordName(chord); if (!p) return [];
+  const ri = noteIdx(p.root); if (ri < 0) return [];
+  const q = p.quality;
+  const ints = CHORD_INTERVALS[q] || CHORD_INTERVALS[''];
+
+  if (mode === 'arp') {
+    // Just the chord tones: 1-3-5-7(-b9)
+    return ints.map(i => (ri + i) % 12);
+  }
+
+  if (mode === 'scale') {
+    const keyRi = noteIdx(activeKey);
+
+    // ── Dominant 7b9: Phrygian dominant from chord root
+    // = 5th mode of harmonic minor. Contains 1, b2, 3, 4, 5, b6, b7
+    // All chord tones present: root, maj3, 5, b7, b9
+    if (q === '7b9') {
+      const phrygDom = [0,1,4,5,7,8,10];
+      return phrygDom.map(i => (ri + i) % 12);
+    }
+
+    // ── Standard: major key → Ionian, minor key → natural minor
+    const keyIntervals = activeKeyMinor ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11];
+    return keyIntervals.map(i => (keyRi + i) % 12);
+  }
+
+  return ints.map(i => (ri + i) % 12);
+}
+
+function parseChordName(str) {
+  str = (str||'').trim();
+  if (!str||str==='%'||str==='/') return null;
+  const m = str.match(/^([A-G][b#]?)(.*)/); if (!m) return null;
+  let root = m[1], quality = m[2].replace(/\/[A-G][b#]?$/,'').trim();
+  if (quality==='M7'||quality==='Δ7'||quality==='Δ') quality='maj7';
+  if (quality==='-7') quality='m7';
+  if (quality==='-')  quality='m';
+  if (!CHORD_INTERVALS[quality]) quality='';
+  return { root: ENHARMONIC[root]||root, quality };
+}
+
+// ─── CHART PARSING ─────────────────────────────────────────
+let timeSig = {beats:4,division:4};
+let chordList = [];
+
+function parseAndLoad() {
+  const raw = document.getElementById('chart-editor').value.trim();
+  if (!raw) return;
+  const lines = raw.split('\n').map(l=>l.trim()).filter(l=>l);
+  let beats=4, div=4, startIdx=0;
+  const sig = lines[0].match(/^(\d+)\/(\d+)$/);
+  if (sig) { beats=parseInt(sig[1]); div=parseInt(sig[2]); startIdx=1; }
+  timeSig = {beats, division:div};
+  chordList = [];
+  // Track current key as we walk lines — set by [KEY] markers like [C], [Am], [F#m]
+  let curKey = null, curKeyMinor = false;
+  for (let li=startIdx; li<lines.length; li++) {
+    const line = lines[li];
+    if (!line||line.startsWith('//')||line.startsWith('#')) continue;
+    // Recognize key marker: [C], [Am], [F#m], [Bb], etc. on its own line
+    const keyMatch = line.match(/^\[([A-G][b#]?)(m?)\]$/);
+    if (keyMatch) {
+      curKey = ENHARMONIC[keyMatch[1]] || keyMatch[1];
+      curKeyMinor = keyMatch[2] === 'm';
+      continue;
+    }
+    line.split('|').map(b=>b.trim()).filter(b=>b).forEach(bar => {
+      const tokens = bar.split(/\s+/).filter(t=>t&&t!=='-');
+      if (!tokens.length) return;
+      const beatsEach = beats/tokens.length;
+      tokens.forEach(tok => {
+        if (tok==='%') { const last=chordList[chordList.length-1]; if(last) chordList.push({name:last.name,beats:beatsEach,key:curKey,keyMinor:curKeyMinor}); }
+        else chordList.push({name:tok, beats:beatsEach, key:curKey, keyMinor:curKeyMinor});
+      });
+    });
+  }
+  if (!chordList.length) return;
+  romanOverrides = {};
+  buildScrollTrack();
+  currentChordIdx=0; currentBeat=0;
+  detectKey(); updateDisplay();
+}
+
+function detectKey() {
+  if(!chordList.length) return;
+
+  // ── If chart has explicit [KEY] markers, use the first one as the initial key ──
+  const firstKeyed = chordList.find(c => c.key);
+  if (firstKeyed) {
+    detectedKey = firstKeyed.key;
+    detectedKeyMinor = firstKeyed.keyMinor;
+    updateKeyDisplay();
+    return;
+  }
+
+  // ── Primary: last chord is almost always the tonic in jazz ──
+  // Walk backward to find the last non-repeat chord
+  let lastP = null;
+  for(let i=chordList.length-1; i>=0; i--){
+    const p=parseChordName(chordList[i].name);
+    if(p){ lastP=p; break; }
+  }
+
+  if(lastP){
+    const q = lastP.quality;
+    // maj7/6/maj9 → major tonic
+    const isMajTonic = ['maj7','6','maj9','','sus2','sus4'].includes(q);
+    // m7/m/mM7/m9/m6 → minor tonic
+    const isMinTonic = ['m7','m','mM7','m9','m6'].includes(q);
+    // dom7 is ambiguous (could be V of next section, or blues tonic)
+    const isDom = q==='7'||q==='9';
+
+    if(isMajTonic){
+      detectedKey = ENHARMONIC[lastP.root]||lastP.root;
+      detectedKeyMinor = false;
+      updateKeyDisplay(); return;
+    }
+    if(isMinTonic){
+      detectedKey = ENHARMONIC[lastP.root]||lastP.root;
+      detectedKeyMinor = true;
+      updateKeyDisplay(); return;
+    }
+    // dom7 last chord: treat root as tonic, major (blues / modal dominant)
+    if(isDom){
+      detectedKey = ENHARMONIC[lastP.root]||lastP.root;
+      detectedKeyMinor = false;
+      updateKeyDisplay(); return;
+    }
+  }
+
+  // ── Fallback: note-frequency scoring (for ambiguous endings) ──
+  const maj=[0,2,4,5,7,9,11], min=[0,2,3,5,7,8,10];
+  const cnt = new Array(12).fill(0);
+  chordList.forEach((ch,i) => {
+    const p=parseChordName(ch.name); if(!p) return;
+    const ri=noteIdx(p.root); if(ri<0) return;
+    const w=1+(i===chordList.length-1?3:0);
+    (CHORD_INTERVALS[p.quality]||CHORD_INTERVALS['']).forEach(iv=>{ cnt[(ri+iv)%12]+=w; });
+  });
+  let bestKey='C', bestScore=-1, bestMinor=false;
+  NOTES.forEach((note,root) => {
+    const ms=maj.reduce((s,i)=>s+cnt[(root+i)%12],0);
+    const ns=min.reduce((s,i)=>s+cnt[(root+i)%12],0);
+    if(ms>bestScore){bestScore=ms;bestKey=note;bestMinor=false;}
+    if(ns>bestScore+0.5){bestScore=ns;bestKey=note;bestMinor=true;}
+  });
+  detectedKey = bestKey;
+  detectedKeyMinor = bestMinor;
+  updateKeyDisplay();
+}
+
+let detectedKey='C', detectedKeyMinor=false;
+let activeKey='C', activeKeyMinor=false; // may be overridden by user
+
+function updateKeyDisplay(){
+  activeKey = detectedKey;
+  activeKeyMinor = detectedKeyMinor;
+  const keyLabel = activeKeyMinor ? activeKey+'m' : activeKey;
+  document.getElementById('key-display').textContent = keyLabel;
+  const rkEl = document.getElementById('fb-key-label');
+  if(rkEl) rkEl.textContent = keyLabel;
+  // highlight active key button
+  ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'].forEach(n=>{
+    const btn=document.getElementById('kbtn-'+n.replace('#','s'));
+    if(btn) btn.className='mbtn'+(n===activeKey?' on':'');
+  });
+  if(currentChordName) drawFretboard(currentChordName);
+  refreshRomanNumerals();
+}
+
+function setKey(note, minor){
+  activeKey=note; activeKeyMinor=minor;
+  document.getElementById('key-display').textContent = minor?note+'m':note;
+  ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'].forEach(n=>{
+    const btn=document.getElementById('kbtn-'+n.replace('#','s'));
+    if(btn) btn.className='mbtn'+(n===note?' on':'');
+  });
+  if(currentChordName) drawFretboard(currentChordName);
+  refreshRomanNumerals();
+}
+
+// ─── ROMAN NUMERAL OVERRIDES ────────────────────────────────
+// Per-chord user overrides; key = chordIdx, value = string
+let romanOverrides = {};
+
+function getRomanForCell(chIdx) {
+  if (romanOverrides[chIdx] !== undefined) return romanOverrides[chIdx];
+  const ch = chordList[chIdx];
+  if (!ch) return '';
+  return getRomanNumeral(ch.name, ch.key, ch.keyMinor);
+}
+
+function setRomanOverride(chIdx, val) {
+  const ch = chordList[chIdx];
+  const auto = ch ? getRomanNumeral(ch.name, ch.key, ch.keyMinor) : '';
+  if (val.trim() === '' || val.trim() === auto) {
+    delete romanOverrides[chIdx]; // cleared — revert to auto
+  } else {
+    romanOverrides[chIdx] = val.trim();
+  }
+  // Update the display span (not during edit)
+  const span = document.getElementById('rn-' + chIdx);
+  if (span) {
+    const display = getRomanForCell(chIdx);
+    span.textContent = display || '?';
+    span.classList.toggle('rn-override', romanOverrides[chIdx] !== undefined);
+  }
+}
+
+function resetAllRomans() {
+  romanOverrides = {};
+  document.querySelectorAll('.rn-span').forEach(span => {
+    const chIdx = parseInt(span.dataset.chidx);
+    span.textContent = getRomanForCell(chIdx) || '?';
+    span.classList.remove('rn-override');
+  });
+}
+
+// When key changes, refresh all auto Roman numerals (non-overridden)
+function refreshRomanNumerals() {
+  document.querySelectorAll('.rn-span').forEach(span => {
+    const chIdx = parseInt(span.dataset.chidx);
+    if (romanOverrides[chIdx] === undefined) {
+      span.textContent = getRomanForCell(chIdx) || '?';
+    }
+  });
+}
+
+// ─── CHART GRID ─────────────────────────────────────────────
+// Real lead-sheet grid: 4 bars per row, bars separated by bold left border.
+// Each chord is its own cell; chords within a bar share equal width.
+
+const BARS_PER_ROW = 4;
+
+function attachRnClick(span, chIdx) {
+  span.addEventListener('click', e => {
+    e.stopPropagation();
+    const current = getRomanForCell(chIdx);
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = current;
+    input.className = 'rn-input';
+    input.style.cssText = 'width:60px;font-family:Space Mono,monospace;font-size:12px;background:var(--bg3);color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;text-align:center;outline:none';
+    span.replaceWith(input);
+    input.focus(); input.select();
+    const commit = () => {
+      setRomanOverride(chIdx, input.value);
+      const newSpan = document.createElement('span');
+      newSpan.className = 'rn-span' + (romanOverrides[chIdx]!==undefined?' rn-override':'');
+      newSpan.id = 'rn-' + chIdx;
+      newSpan.dataset.chidx = String(chIdx);
+      newSpan.title = 'Click to edit';
+      newSpan.textContent = getRomanForCell(chIdx) || '?';
+      input.replaceWith(newSpan);
+      attachRnClick(newSpan, chIdx);
+    };
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', e => { if(e.key==='Enter'||e.key==='Escape') input.blur(); });
+  });
+}
+
+function buildScrollTrack() {
+  const grid = document.getElementById('chart-grid');
+  grid.innerHTML = '';
+
+  // ── Group chords into bars ──────────────────────────────────
+  // Each bar = adjacent chords whose beats sum to timeSig.beats
+  const bars = []; // [[chordIdx, ...], ...]
+  let bar = [], beatAcc = 0;
+  chordList.forEach((ch, i) => {
+    bar.push(i);
+    beatAcc += ch.beats;
+    if (Math.round(beatAcc) >= timeSig.beats) { bars.push(bar); bar=[]; beatAcc=0; }
+  });
+  if (bar.length) bars.push(bar);
+
+  // ── Figure out grid columns ─────────────────────────────────
+  // Each bar gets equal width. Within a bar, chords split that width equally.
+  // We build one flat CSS grid where each bar's chords span equal sub-columns.
+  // Find LCM of chord counts per bar so every bar aligns cleanly.
+  function gcd(a,b){return b?gcd(b,a%b):a;}
+  function lcm(a,b){return a/gcd(a,b)*b;}
+  const chordsPerBar = bars.map(b=>b.length);
+  const subCols = chordsPerBar.reduce((acc,n)=>lcm(acc,n), 1); // per-bar sub-columns
+  const totalCols = BARS_PER_ROW * subCols;
+
+  grid.style.gridTemplateColumns = `repeat(${totalCols}, 1fr)`;
+  grid.style.gridAutoRows = 'minmax(72px, 1fr)';
+  grid.style.gap = '0';
+
+  // ── Build cells ─────────────────────────────────────────────
+  bars.forEach((barChords, barIdx) => {
+    const rowIdx = Math.floor(barIdx / BARS_PER_ROW);
+    const colInRow = barIdx % BARS_PER_ROW;
+    const spanPerChord = subCols / barChords.length;
+    const barColStart = colInRow * subCols + 1; // 1-indexed
+
+    barChords.forEach((chIdx, posInBar) => {
+      const ch = chordList[chIdx];
+      const colStart = barColStart + posInBar * spanPerChord;
+      const cell = document.createElement('div');
+
+      // Bar-start cells get the thicker left border
+      cell.className = 'chord-cell' + (posInBar === 0 ? ' bar-start' : '');
+      cell.id = 'cc-' + chIdx;
+      cell.addEventListener('click', () => jumpToChord(chIdx));
+      cell.style.gridColumn = `${colStart} / span ${spanPerChord}`;
+      cell.style.gridRow = rowIdx + 1;
+
+      const rn = getRomanForCell(chIdx);
+      cell.innerHTML = `<div class="chord-name">${ch.name}</div>
+        <span class="rn-span${romanOverrides[chIdx]!==undefined?' rn-override':''}"
+              id="rn-${chIdx}" data-chidx="${chIdx}"
+              title="Click to edit Roman numeral">${rn||'?'}</span>
+        <div class="beat-dots" id="bd-${chIdx}"></div>`;
+      // Make Roman numeral editable on click
+      attachRnClick(cell.querySelector('.rn-span'), chIdx);
+      const bd = cell.querySelector('.beat-dots');
+      for (let b=0; b<Math.round(ch.beats); b++) {
+        const d = document.createElement('div');
+        d.className='beat-dot'; d.id=`dot-${chIdx}-${b}`; bd.appendChild(d);
+      }
+      grid.appendChild(cell);
+    });
+  });
+
+  // ── Time sig badge in top-left cell ────────────────────────
+  const firstCell = grid.querySelector('.chord-cell');
+  if (firstCell) {
+    const badge = document.createElement('div');
+    badge.className = 'time-sig-badge';
+    badge.innerHTML = `${timeSig.beats}<span>/${timeSig.division}</span>`;
+    firstCell.prepend(badge);
+    firstCell.style.flexDirection = 'row';
+    firstCell.style.alignItems = 'center';
+    firstCell.style.gap = '10px';
+  }
+}
+
+function scrollToChord(idx) {
+  const cell = document.getElementById('cc-' + idx);
+  if (cell) cell.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+// ─── PLAYBACK ──────────────────────────────────────────────
+let bpm=100, playing=false, paused=false, counting=false, currentChordIdx=0, currentBeat=0;
+let beatInterval=null, countBeat=0, audioCtx=null;
+
+function getAC() {
+  if (!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  if (audioCtx.state==='suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function changeBpm(d) {
+  bpm=Math.max(40,Math.min(300,bpm+d));
+  document.getElementById('bpm-display').textContent=bpm;
+  if(playing){
+    // Restart interval only — don't stop/start (that exits fullscreen)
+    clearInterval(beatInterval);
+    beatInterval=setInterval(onBeat,(60/bpm)*1000);
+  }
+}
+
+function togglePlay() {
+  if(playing||counting){stopPlay();return;}
+  if(!chordList.length){parseAndLoad();if(!chordList.length)return;}
+  paused=false;
+  startCountIn();
+}
+
+function togglePause() {
+  if(!playing) return;
+  if(paused){
+    // Resume
+    paused=false;
+    beatInterval=setInterval(onBeat,(60/bpm)*1000);
+    document.getElementById('pause-btn').textContent='⏸ Pause';
+    playChordSound(chordList[currentChordIdx].name);
+    if(document.fullscreenElement===null && document.documentElement.requestFullscreen)
+      document.documentElement.requestFullscreen().catch(()=>{});
+  } else {
+    // Pause
+    paused=true;
+    clearInterval(beatInterval);
+    stopPad(); stopArp(); stopBass();
+    document.getElementById('pause-btn').textContent='▶ Resume';
+  }
+}
+
+function startCountIn() {
+  counting=true; countBeat=timeSig.beats;
+  document.getElementById('play-btn').textContent='■ Stop';
+  document.getElementById('play-btn').className='btn danger';
+  document.getElementById('count-display').textContent=countBeat;
+  const ms=(60/bpm)*1000;
+  playClick(true);
+  const iv=setInterval(()=>{
+    countBeat--;
+    if(countBeat<=0){clearInterval(iv);document.getElementById('count-display').textContent='';counting=false;startPlay();}
+    else{document.getElementById('count-display').textContent=countBeat;playClick(false);}
+  },ms);
+}
+
+function startPlay() {
+  playing=true; currentChordIdx=0; currentBeat=0;
+  document.getElementById('pause-btn').style.display='';
+  if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{});
+  updateDisplay();
+  playChordSound(chordList[0].name);
+  onBeat(); // fire beat 1 immediately in sync with chord sound
+  beatInterval=setInterval(onBeat,(60/bpm)*1000);
+}
+
+function stopPlay() {
+  playing=false; paused=false; counting=false;
+  clearInterval(beatInterval);
+  stopPad(); stopArp(); stopBass();
+  document.getElementById('play-btn').textContent='▶ Play';
+  document.getElementById('play-btn').className='btn primary';
+  document.getElementById('pause-btn').style.display='none';
+  document.getElementById('pause-btn').textContent='⏸ Pause';
+  document.getElementById('count-display').textContent='';
+  document.querySelectorAll('.beat-dot').forEach(d=>d.classList.remove('on'));
+  if(document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+}
+
+function onBeat() {
+  if(!playing||!chordList.length) return;
+  // Advance chord if we've used up all its beats
+  if(currentBeat >= Math.round(chordList[currentChordIdx].beats)) {
+    for(let b=0;b<Math.round(chordList[currentChordIdx].beats);b++){
+      const d=document.getElementById(`dot-${currentChordIdx}-${b}`);if(d)d.classList.remove('on');
+    }
+    currentBeat=0;
+    currentChordIdx=(currentChordIdx+1)%chordList.length;
+    updateDisplay();
+    playChordSound(chordList[currentChordIdx].name);
+  }
+  // Fire this beat — beat 0 is the downbeat (strong click)
+  const dot=document.getElementById(`dot-${currentChordIdx}-${currentBeat}`);
+  if(dot) dot.classList.add('on');
+  playClick(currentBeat===0);
+  currentBeat++;
+}
+
+// ─── JUMP TO CHORD ─────────────────────────────────────────
+function jumpToChord(idx) {
+  if (!chordList.length) return;
+  currentChordIdx = idx;
+  currentBeat = 0;
+  document.querySelectorAll('.beat-dot').forEach(d => d.classList.remove('on'));
+  updateDisplay();
+  if (playing && !paused) {
+    clearInterval(beatInterval);
+    playChordSound(chordList[idx].name);
+    onBeat(); // beat 1 in sync
+    beatInterval = setInterval(onBeat, (60/bpm)*1000);
+  } else if (!playing) {
+    // Not playing - just show the chord on the fretboard
+    drawFretboard(chordList[idx].name);
+  }
+}
+
+function updateDisplay() {
+  document.querySelectorAll('.chord-cell').forEach(c=>c.classList.remove('current'));
+  const cur=document.getElementById('cc-'+currentChordIdx);
+  if(cur) cur.classList.add('current');
+  scrollToChord(currentChordIdx);
+  const ch=chordList[currentChordIdx];
+  if(!ch) return;
+  // If this chord has an explicit key (from [KEY] marker) different from the current
+  // active key, switch keys before redrawing. setKey handles the redraw.
+  if (ch.key && (ch.key !== activeKey || ch.keyMinor !== activeKeyMinor)) {
+    currentChordName = ch.name; // ensure setKey's drawFretboard uses the new chord
+    setKey(ch.key, ch.keyMinor);
+    return;
+  }
+  drawFretboard(ch.name);
+}
+
+// ─── AUDIO ─────────────────────────────────────────────────
+function getFreqs(name) {
+  const p=parseChordName(name); if(!p) return [];
+  const ri=noteIdx(p.root); if(ri<0) return [];
+  const ints=CHORD_INTERVALS[p.quality]||CHORD_INTERVALS[''];
+  const C3=130.81, rootF=C3*Math.pow(2,ri/12);
+  return ints.map(iv=>{ let f=rootF*Math.pow(2,iv/12); while(f<rootF)f*=2; while(f>rootF*4)f/=2; return f; });
+}
+
+let padNodes=[];
+function stopPad() {
+  const ac=getAC(), now=ac.currentTime;
+  padNodes.forEach(({osc,gain})=>{ try{gain.gain.cancelScheduledValues(now);gain.gain.setValueAtTime(0,now);osc.stop(now+0.05);}catch(e){} });
+  padNodes=[];
+}
+
+let chordRhythm='whole';
+function setChordRhythm(r) {
+  chordRhythm=r;
+  ['whole','quarter','3-1'].forEach(k=>{ document.getElementById('cr-'+k).className='mbtn'+(k===r?' on':''); });
+}
+
+function getRhythmHits(dur, beats) {
+  const bd=dur/beats;
+  if(chordRhythm==='whole') return [{offset:0,dur}];
+  if(chordRhythm==='quarter') return Array.from({length:beats},(_,i)=>({offset:i*bd,dur:bd*0.88}));
+  if(chordRhythm==='3-1') return [{offset:0,dur:bd*(beats-1)*0.95},{offset:bd*(beats-1),dur:bd*0.85}];
+  return [{offset:0,dur}];
+}
+
+function playOnePad(freqs, t0, dur, vol) {
+  const ac=getAC();
+  const atk=Math.min(0.04,dur*0.1), rel=Math.min(0.06,dur*0.15), hold=dur-atk-rel;
+  freqs.forEach(freq=>{
+    const o1=ac.createOscillator(),g1=ac.createGain();
+    const o2=ac.createOscillator(),g2=ac.createGain();
+    const o3=ac.createOscillator(),g3=ac.createGain();
+    const master=ac.createGain();
+    [o1,o2,o3].forEach((o,i)=>{o.connect([g1,g2,g3][i]);[g1,g2,g3][i].connect(master);});
+    master.connect(ac.destination);
+    o1.type='triangle'; o1.frequency.value=freq;
+    o2.type='sine';     o2.frequency.value=freq*1.003;
+    o3.type='sine';     o3.frequency.value=freq/2;
+    const v=vol/freqs.length;
+    [[g1,v],[g2,v*0.5],[g3,v*0.4]].forEach(([g,gv])=>{
+      g.gain.setValueAtTime(0,t0);
+      g.gain.linearRampToValueAtTime(gv,t0+atk);
+      g.gain.setValueAtTime(gv,t0+atk+Math.max(hold,0.001));
+      g.gain.linearRampToValueAtTime(0.0001,t0+dur);
+    });
+    master.gain.value=1;
+    [o1,o2,o3].forEach(o=>{o.start(t0);o.stop(t0+dur+0.05);});
+    padNodes.push({osc:o1,gain:g1},{osc:o2,gain:g2},{osc:o3,gain:g3});
+  });
+}
+
+function playChordSound(name) {
+  stopPad();
+  const freqs=getFreqs(name); if(!freqs.length) return;
+  const ac=getAC(), now=ac.currentTime;
+  const ch=chordList[currentChordIdx];
+  const dur=ch?(60/bpm)*ch.beats:2;
+  const vol=parseFloat(document.getElementById('chord-vol').value)*0.4;
+  getRhythmHits(dur,ch?ch.beats:timeSig.beats).forEach(({offset,dur:d})=>playOnePad(freqs,now+offset,d,vol));
+  playArp(name); playBass(name);
+}
+
+function playClick(strong) {
+  const ac=getAC(), vol=parseFloat(document.getElementById('metro-vol').value);
+  if(vol<0.01) return;
+  const osc=ac.createOscillator(), gain=ac.createGain();
+  osc.connect(gain); gain.connect(ac.destination);
+  osc.type='sine'; osc.frequency.value=strong?1200:900;
+  const now=ac.currentTime;
+  gain.gain.setValueAtTime(strong?vol:vol*0.5,now);
+  gain.gain.exponentialRampToValueAtTime(0.0001,now+0.04);
+  osc.start(now); osc.stop(now+0.05);
+}
+
+// ─── TUNE A ────────────────────────────────────────────────
+let tuneOsc=null, tuneGain=null;
+function toggleTuneA() {
+  if(tuneOsc){
+    const ac=getAC();
+    tuneGain.gain.linearRampToValueAtTime(0.0001,ac.currentTime+0.08);
+    tuneOsc.stop(ac.currentTime+0.1);
+    tuneOsc=null; tuneGain=null;
+    document.getElementById('tune-btn').className='btn';
+  } else {
+    const ac=getAC();
+    tuneOsc=ac.createOscillator(); tuneGain=ac.createGain();
+    tuneOsc.connect(tuneGain); tuneGain.connect(ac.destination);
+    tuneOsc.type='sine'; tuneOsc.frequency.value=440;
+    tuneGain.gain.setValueAtTime(0,ac.currentTime);
+    tuneGain.gain.linearRampToValueAtTime(0.4,ac.currentTime+0.05);
+    tuneOsc.start();
+    document.getElementById('tune-btn').className='btn active';
+  }
+}
+
+// ─── ARPEGGIO OVERLAY ──────────────────────────────────────
+let arpOn=false, arpDir='up', arpNodes=[];
+function toggleArp() {
+  arpOn=!arpOn;
+  const btn=document.getElementById('arp-btn');
+  btn.textContent=arpOn?'On':'Off'; btn.className=arpOn?'btn active':'btn';
+  if(!arpOn) stopArp();
+}
+function setArpDir(d) {
+  arpDir=d;
+  ['up','updown','rand'].forEach(k=>{document.getElementById('arp-'+k).className='mbtn'+(k===d?' on':'');});
+}
+function stopArp() {
+  const ac=getAC(),now=ac.currentTime;
+  arpNodes.forEach(({osc,gain})=>{try{gain.gain.cancelScheduledValues(now);gain.gain.setValueAtTime(0,now);osc.stop(now+0.01);}catch(e){}});
+  arpNodes=[];
+}
+function playArp(name) {
+  stopArp(); if(!arpOn) return;
+  const ac=getAC(), freqs=getFreqs(name); if(!freqs.length) return;
+  const ext=[...freqs,...freqs.map(f=>f*2)];
+  const ch=chordList[currentChordIdx];
+  const dur=ch?(60/bpm)*ch.beats:2;
+  const n=Math.round(ch?ch.beats*2:8);
+  const gap=dur/n, nd=gap*0.7;
+  let seq=[];
+  if(arpDir==='up') seq=Array.from({length:n},(_,i)=>ext[i%ext.length]);
+  else if(arpDir==='updown'){const ud=[...ext,...[...ext].reverse().slice(1,-1)];seq=Array.from({length:n},(_,i)=>ud[i%ud.length]);}
+  else seq=Array.from({length:n},()=>ext[Math.floor(Math.random()*ext.length)]);
+  const vol=parseFloat(document.getElementById('arp-vol').value)*0.18;
+  const now=ac.currentTime;
+  seq.forEach((freq,i)=>{
+    const t=now+i*gap;
+    const osc=ac.createOscillator(),gain=ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.type='sine'; osc.frequency.value=freq*2;
+    gain.gain.setValueAtTime(0,t);
+    gain.gain.linearRampToValueAtTime(vol,t+0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001,t+nd);
+    osc.start(t); osc.stop(t+nd+0.02);
+    arpNodes.push({osc,gain});
+  });
+}
+
+// ─── WALKING BASS ──────────────────────────────────────────
+let bassOn=false, bassStyle='chord', bassNodes=[];
+function toggleBass() {
+  bassOn=!bassOn;
+  const btn=document.getElementById('bass-btn');
+  btn.textContent=bassOn?'On':'Off'; btn.className=bassOn?'btn active':'btn';
+  if(!bassOn) stopBass();
+}
+function setBassStyle(s) {
+  bassStyle=s;
+  ['chord','chromatic'].forEach(k=>{document.getElementById('bass-'+k).className='mbtn'+(k===s?' on':'');});
+}
+function stopBass() {
+  const ac=getAC(),now=ac.currentTime;
+  bassNodes.forEach(({osc,gain})=>{try{gain.gain.cancelScheduledValues(now);gain.gain.setValueAtTime(0,now);osc.stop(now+0.01);}catch(e){}});
+  bassNodes=[];
+}
+function playBass(name) {
+  stopBass(); if(!bassOn) return;
+  const ac=getAC(), p=parseChordName(name); if(!p) return;
+  const ri=noteIdx(p.root); if(ri<0) return;
+  const ch=chordList[currentChordIdx];
+  const dur=ch?(60/bpm)*ch.beats:2;
+  const beats=ch?ch.beats:timeSig.beats;
+  const bd=dur/beats, nd=bd*0.82;
+  const C2=65.41, rf=C2*Math.pow(2,ri/12);
+  const ints=CHORD_INTERVALS[p.quality]||CHORD_INTERVALS[''];
+  const cfs=ints.map(i=>{let f=rf*Math.pow(2,i/12);while(f>rf*2)f/=2;return f;});
+  const ni=(currentChordIdx+1)%chordList.length;
+  const np=parseChordName(chordList[ni].name);
+  const nri=np?noteIdx(np.root):ri;
+  const nrf=C2*Math.pow(2,nri/12);
+  const seq=[];
+  for(let b=0;b<beats;b++){
+    if(b===0) seq.push(rf);
+    else if(b===beats-1&&bassStyle==='chromatic'){let a=nrf/Math.pow(2,1/12);while(a<rf*0.5)a*=2;while(a>rf*2)a/=2;seq.push(a);}
+    else if(b===beats-2&&bassStyle==='chromatic'&&beats>=4) seq.push(cfs[2]||cfs[1]||rf);
+    else seq.push(cfs[b%cfs.length]);
+  }
+  const vol=parseFloat(document.getElementById('bass-vol').value)*0.5;
+  const now=ac.currentTime;
+  seq.forEach((freq,i)=>{
+    const t=now+i*bd;
+    const osc=ac.createOscillator(),gain=ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.type='triangle'; osc.frequency.value=freq;
+    gain.gain.setValueAtTime(0,t);
+    gain.gain.linearRampToValueAtTime(vol,t+0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001,t+nd);
+    osc.start(t); osc.stop(t+nd+0.02);
+    bassNodes.push({osc,gain});
+  });
+}
+
+// ─── CHART SAVE/LOAD ───────────────────────────────────────
+const SKEY='gt_charts';
+
+// ── Built-in charts — always available, live in the file itself ──
+const BUILTIN_CHARTS = {
+  'Autumn Leaves': `4/4
+[G]
+Am7 | D7 | Gmaj7 | Cmaj7
+F#m7b5 | B7b9 | Em | Em
+F#m7b5 | B7b9 | Em | Em
+Am7 | D7 | Gmaj7 | Cmaj7
+F#m7b5 | B7b9 | Em7 A7 | Dm7 G7
+F#m7b5 | B7b9 | Em | Em`,
+};
+
+function getSaved(){
+  let local={};
+  try{local=JSON.parse(localStorage.getItem(SKEY)||'{}');}catch(e){}
+  // Merge: built-ins first, then user-saved (user can override a built-in name)
+  return Object.assign({}, BUILTIN_CHARTS, local);
+}
+function populateChartSelect() {
+  const charts=getSaved(), sel=document.getElementById('chart-select'), cur=sel.value;
+  sel.innerHTML='<option value="">— Saved charts —</option>';
+  Object.keys(charts).sort().forEach(n=>{
+    const o=document.createElement('option');
+    o.value=n; o.textContent=n+(BUILTIN_CHARTS[n]&&!JSON.parse(localStorage.getItem(SKEY)||'{}')[n]?' ♪':'');
+    sel.appendChild(o);
+  });
+  if(cur&&charts[cur]) sel.value=cur;
+}
+function saveChart() {
+  const text=document.getElementById('chart-editor').value.trim(); if(!text) return;
+  const lines=text.split('\n').filter(l=>l.trim()&&!l.match(/^\d+\/\d+$/));
+  const def=lines[0]?lines[0].replace(/\|/g,'').trim().split(/\s+/).slice(0,3).join(' '):'Chart';
+  const name=prompt('Save as:',def); if(!name) return;
+  const charts=getSaved(); charts[name.trim()]=text;
+  localStorage.setItem(SKEY,JSON.stringify(charts));
+  populateChartSelect(); document.getElementById('chart-select').value=name.trim();
+  const h=document.getElementById('save-hint'); h.textContent='Saved ✓';
+  setTimeout(()=>h.textContent='',2000);
+}
+function loadSavedChart() {
+  const name=document.getElementById('chart-select').value; if(!name) return;
+  const charts=getSaved();
+  if(charts[name]){document.getElementById('chart-editor').value=charts[name];parseAndLoad();}
+}
+function deleteChart() {
+  const name=document.getElementById('chart-select').value; if(!name) return;
+  if(BUILTIN_CHARTS[name]&&!JSON.parse(localStorage.getItem(SKEY)||'{}')[name]){
+    alert('"'+name+'" is a built-in chart and cannot be deleted.'); return;
+  }
+  if(!confirm('Delete "'+name+'"?')) return;
+  const local=JSON.parse(localStorage.getItem(SKEY)||'{}'); delete local[name];
+  localStorage.setItem(SKEY,JSON.stringify(local));
+  populateChartSelect(); document.getElementById('save-hint').textContent='';
+}
+
+// ─── FRETBOARD ─────────────────────────────────────────────
+const SC={C:'#4F8EF7',A:'#E8593C',G:'#3BAF7E',E:'#E8A020',D:'#9B5CF6'};
+
+// CAGED shapes: fret positions relative to the open-position chord.
+// s=string index (0=high e, 5=low E), f=fret relative to shape root position.
+// These define the position BOX — the fret span for each shape.
+// C shape: open C chord — no low E string
+const SHAPES={
+  // s values: 0=low E, 1=A, 2=D, 3=G, 4=B, 5=high e (matching left-to-right display)
+  // Rule: no redundant notes — if a note appears on an adjacent string at the same fret, omit the higher duplicate.
+  C:{box:[{s:0,f:0},{s:0,f:2},{s:0,f:3},{s:1,f:0},{s:1,f:1},{s:1,f:2},{s:1,f:3},{s:2,f:0},{s:2,f:2},{s:3,f:0},{s:3,f:2},{s:3,f:3},{s:4,f:0},{s:4,f:1},{s:4,f:3},{s:5,f:0},{s:5,f:1},{s:5,f:3}],roots:[{s:1,f:3},{s:4,f:1}]},
+  A:{spanOverride:[0,6],perStringSpan:{0:[0,4],4:[1,5],5:[2,6]},defaultSpan:[1,4],
+    pent:[
+      {s:0,f:2},{s:0,f:4},
+      {s:1,f:2},{s:1,f:4},
+      {s:2,f:1},{s:2,f:4},
+      {s:3,f:1},{s:3,f:4},
+      {s:4,f:2},{s:4,f:4},
+      {s:5,f:2},{s:5,f:4},
+    ],
+    box:[
+    {s:0,f:0},{s:0,f:2},{s:0,f:4},
+    {s:1,f:1},{s:1,f:2},{s:1,f:4},
+    {s:2,f:1},{s:2,f:2},{s:2,f:4},
+    {s:3,f:1},{s:3,f:2},{s:3,f:3},{s:3,f:4},
+    {s:4,f:2},{s:4,f:4},{s:4,f:5},
+    {s:5,f:2},{s:5,f:4},{s:5,f:5},{s:5,f:6},
+  ],roots:[{s:1,f:2},{s:3,f:4}]},
+  // G FORM — EXCEPTION: anchored at OPEN G chord (root on low E fret 3, G string open).
+  // Unlike A form (anchored at B-barre fret 2), G form does NOT have a high-octave version.
+  // It lives at the bottom of the neck. Scope: open strings through ~fret 12.
+  // Note: F# (the 7) is added on D string fret 4 to complete the scale, since the
+  // form's natural "below-root" position on G string would be fret -1 (doesn't exist).
+  G:{
+    spanOverride:[0,4],
+    defaultSpan:[0,3],
+    perStringSpan:{2:[0,4],3:[0,4]},
+    box:[
+      {s:0,f:0},{s:0,f:2},{s:0,f:3},   // low E: E (6), F# (7), G (R)
+      {s:1,f:0},{s:1,f:2},{s:1,f:3},   // A:     A (2), B (3), C (4)
+      {s:2,f:0},{s:2,f:2},{s:2,f:4},   // D:     D (5), E (6), F# (7) ← added
+      {s:3,f:0},{s:3,f:2},{s:3,f:4},   // G:     G (R), A (2), B (3) / C# for A7
+      {s:4,f:0},{s:4,f:1},{s:4,f:3},   // B:     B (3), C (4), D (5)
+      {s:5,f:0},{s:5,f:2},{s:5,f:3}    // high e: E (6), F# (7), G (R)
+    ],
+    roots:[{s:0,f:3},{s:3,f:0}]
+  },
+  // E FORM — anchored at open E chord (root on low E fret 0, D string fret 2, high e fret 0).
+  // Pattern given at F chord reference (E shape barred at fret 1) then shifted down 1 for storage.
+  // Negative f values are below the nut at E chord but activate as form moves up the neck.
+  // Minor corollary: C#m at same position — root on B string fret 2 (C# = relative minor of E).
+  E:{
+    spanOverride:[-1,2],
+    defaultSpan:[0,2],
+    perStringSpan:{0:[-1,2],1:[-1,2],2:[-1,2],3:[-1,2],4:[-1,2],5:[-1,2]},
+    box:[
+      {s:0,f:-1},{s:0,f:0},{s:0,f:2},  // low E: D#(7th for F+), E(R), F#
+      {s:1,f:-1},{s:1,f:0},{s:1,f:2},  // A:     G#(for F+), A, B
+      {s:2,f:-1},{s:2,f:0},{s:2,f:1},{s:2,f:2},  // D: b6(f:-1), b7(f:0), maj7(f:1), R(f:2)
+      {s:3,f:-1},{s:3,f:1},{s:3,f:2},  // G:     F#(for F+), G#, A
+      {s:4,f:0},{s:4,f:2},             // B: b7(f:0), minR/6th(f:2)
+      {s:5,f:-1},{s:5,f:0},{s:5,f:2}   // e:     D#(for F+), E(R), F#
+    ],
+    roots:[{s:0,f:0},{s:2,f:2},{s:5,f:0}]
+  },
+  // D FORM — anchored at open D chord (root on D string fret 0, B string fret 3).
+  // Pattern given at E chord reference (D form shifted +2) then shifted down 2 for storage.
+  // Negative f values (e.g. f=-1,-2) are below the nut at D chord but become accessible
+  // as the form moves up the neck for higher chords.
+  // Minor corollary: Bm at same position — root on B string fret 0 (open B = relative minor of D).
+  D:{
+    spanOverride:[-2,3],
+    defaultSpan:[0,3],
+    perStringSpan:{0:[-2,2],1:[-2,2],2:[-1,2],3:[-1,2]},
+    box:[
+      {s:0,f:-2},{s:0,f:0},{s:0,f:2},  // low E: D(R for E+), E(2nd), F#(3rd)
+      {s:1,f:-2},{s:1,f:0},{s:1,f:2},  // A:     G(4th for D+), A(5th), B(6th)
+      {s:2,f:-1},{s:2,f:0},{s:2,f:2},  // D:     C#(7th for D+), D(R), E(2nd)
+      {s:3,f:-1},{s:3,f:0},{s:3,f:2},  // G:     F#(3rd for D+), G(4th), A(5th)
+      {s:4,f:0},{s:4,f:2},{s:4,f:3},   // B:     B(6th/minor R), C#(7th), D(R)
+      {s:5,f:0},{s:5,f:2},{s:5,f:3}    // e:     E(2nd), F#(3rd), G(4th)
+    ],
+    roots:[{s:2,f:0},{s:4,f:3}]  // D string open, B string fret 3
+  },
+};
+
+// For each shape, the fret span of the position box (lo..hi relative to offset)
+const SHAPE_SPAN={C:[0,3],A:[0,6],G:[0,3],E:[0,2],D:[0,3]};
+
+const OPEN=[4,9,2,7,11,4]; // s0=low E=4, s1=A=9, s2=D=2, s3=G=7, s4=B=11, s5=high e=4
+const SOR={E:0,A:1,G:0,C:1,D:2};          // anchor string — major form
+const SOR_MINOR={E:4,A:0,G:0,C:1,D:4};    // minor anchor string: E→B str (C# rel.minor), A→low E (G#m), G→low E (Em), C→A str (Am), D→B str (Bm)
+const SOF={E:0,A:2,G:3,C:3,D:0};          // anchor offset — major form
+const SOF_MINOR={E:2,A:4,G:0,C:0,D:0};    // minor anchor offset: E→B fret2=C#, G→low E fret0=E, others unchanged
+let activeShape='all', activeMode='arp', activePosition='free', currentChordName='';
+
+function selShape(s){
+  activeShape=s;
+  ['all','C','A','G','E','D'].forEach(k=>{document.getElementById('hb-'+k).className='mbtn'+(k===s?' on':'');});
+  if(currentChordName) drawFretboard(currentChordName);
+}
+function selPosition(p){
+  activePosition=p;
+  ['free','C','A','G','E','D'].forEach(k=>{document.getElementById('pos-'+k).className='mbtn'+(k===p?' on':'');});
+  if(currentChordName) drawFretboard(currentChordName);
+  else { updateChordDisplay(''); updateRomanPosition(); }
+}
+function setMode(m){
+  activeMode=m;
+  ['arp','scale'].forEach(k=>{document.getElementById('mb-'+k).className='mbtn'+(k===m?' on':'');});
+  if(currentChordName) drawFretboard(currentChordName);
+}
+function getNoteAt(s,f){return(OPEN[s]+f)%12;}
+
+function getRomanNumeral(chordName, keyOverride, keyMinorOverride) {
+  const p = parseChordName(chordName); if(!p) return '';
+  const ri = noteIdx(p.root); if(ri<0) return '';
+  // Use override if provided (per-chord key from [KEY] marker), else active key
+  const useKey = keyOverride !== undefined && keyOverride !== null ? keyOverride : activeKey;
+  const useKeyMinor = keyMinorOverride !== undefined && keyMinorOverride !== null ? keyMinorOverride : activeKeyMinor;
+  const keyRi = noteIdx(useKey);
+  const interval = (ri - keyRi + 12) % 12;
+  const q = p.quality;
+  const isMin = ['m','m7','mM7','m7b5','m9','m6','dim','dim7','ø7','ø'].includes(q);
+  const isDim = ['dim','dim7','ø7','ø','m7b5'].includes(q);
+  const isAug = q==='aug'||q==='+';
+  const has7 = ['maj7','7','m7','mM7','dim7','ø7','m7b5','9','maj9','m9','7b9','7#9','7b5','7#5','7alt'].includes(q);
+
+  // Scale degree maps: diatonic intervals for major and natural minor
+  const majorDegrees  = {0:1, 2:2, 4:3, 5:4, 7:5, 9:6, 11:7};
+  const minorDegrees  = {0:1, 2:2, 3:3, 5:4, 7:5, 8:6, 10:7};
+  // Chromatic accidental map for non-diatonic intervals
+  const majorChromatic = {1:'♭II', 3:'♭III', 6:'♭V', 8:'♭VI', 10:'♭VII'};
+  const minorChromatic = {1:'♭II', 4:'#IV', 6:'♭V', 9:'VI', 11:'VII'};
+
+  const degMap = useKeyMinor ? minorDegrees : majorDegrees;
+  const chromMap = useKeyMinor ? minorChromatic : majorChromatic;
+  const romans = ['','I','II','III','IV','V','VI','VII'];
+
+  let r;
+  if (degMap[interval] !== undefined) {
+    r = romans[degMap[interval]];
+    if(isMin||isDim) r = r.toLowerCase();
+  } else if (chromMap[interval]) {
+    // Non-diatonic — show with accidental, case based on chord quality
+    r = chromMap[interval];
+    if(isMin||isDim) r = r.replace(/[IV]+/g, s => s.toLowerCase());
+  } else {
+    return '?';
+  }
+
+  // ── Secondary dominant detection ─────────────────────────
+  // In major keys: dominant 7th chords whose root is a non-diatonic dominant
+  // (i.e. not the V chord itself) get labeled as V7/x
+  const isDom = ['7','7b9','7#9','7b5','7#5','7alt','9'].includes(q);
+  if (isDom && !useKeyMinor) {
+    // Map: interval of secondary dominant root → target chord numeral
+    const secDomMap = {
+      4:  'V7/vi',   // III7  → V7 of vi  (e.g. B7 in G → V7/vi)
+      9:  'V7/ii',   // VI7   → V7 of ii  (e.g. A7 in G → V7/ii)
+      11: 'V7/iii',  // VII7  → V7 of iii
+      1:  'V7/IV',   // ♭II7  → V7 of IV  (tritone sub)
+      6:  'V7/V',    // ♭V7   → V7 of V   (tritone sub of II)
+      2:  'V7/V',    // II7   → V7 of V   (e.g. A7 in G → V7/V... but 9=A7 already covers V7/ii)
+    };
+    // Only label as secondary dominant if root is NOT the diatonic V (interval=7)
+    if (interval !== 7 && secDomMap[interval]) {
+      let label = secDomMap[interval];
+      if (q === '7b9') label = label.replace('V7', 'V7♭9');
+      return label;
+    }
+  }
+
+  if(isDim) r += '°';
+  else if(isAug) r += '+';
+  if(has7) r += q==='maj7'||q==='mM7'||q==='maj9' ? '△7' : '7';
+  return r;
+}
+
+// Update Roman numeral display — in the roman-panel to the right of fretboard
+function updateChordDisplay(name) {
+  const rdEl = document.getElementById('roman-display');
+  const rkEl = document.getElementById('fb-key-label');
+  const ctEl = document.getElementById('roman-chord-tonic');
+  if (!name) {
+    rdEl.textContent = '—';
+    if(rkEl) rkEl.textContent = '—';
+    if(ctEl) ctEl.textContent = '—';
+    return;
+  }
+  // Use per-chord key (from [KEY] marker) so panel always shows correct function
+  const roman = getRomanForCell(currentChordIdx);
+  rdEl.textContent = roman || name;
+  const ch = chordList[currentChordIdx];
+  const dispKey = ch?.key || activeKey;
+  const dispMinor = ch?.key ? ch.keyMinor : activeKeyMinor;
+  // Key box (above) — always shows current key, small
+  if(rkEl) rkEl.textContent = dispMinor ? dispKey + 'm' : dispKey;
+  // Chord tonic box (below) — shows chord root: uppercase=major, lowercase=minor
+  if(ctEl && ch) {
+    const p = parseChordName(ch.name);
+    if(p) {
+      const isMin = ['m','m7','mM7','m7b5','m9','m6','dim','dim7','ø7','ø'].includes(p.quality);
+      ctEl.textContent = isMin ? p.root.toLowerCase() : p.root;
+      ctEl.style.fontSize = isMin ? '22px' : '26px';
+    } else {
+      ctEl.textContent = '—';
+    }
+  }
+}
+
+// Update floating CAGED labels beside fretboard
+function updateCagedLabels() {
+  const container=document.getElementById('caged-labels');
+  if(!container) return;
+  container.innerHTML='';
+  const keyRi=noteIdx(activeKey);
+  const tonicRi=activeKeyMinor?(keyRi+3)%12:keyRi;
+  const FY=25, MT=42; // must match drawFretboard constants
+  ['C','A','G','E','D'].forEach(sh=>{
+    const off=getOffset(sh,tonicRi,false);
+    const [loSpan,hiSpan]=SHAPE_SPAN[sh];
+    const midFret=loSpan+off+(hiSpan-loSpan)/2;
+    const y=MT+midFret*FY;
+    const el=document.createElement('div');
+    el.className='caged-label'+(activePosition===sh?' locked':'');
+    el.textContent=sh;
+    el.style.top=y+'px';
+    el.style.color=SC[sh]||'#fff';
+    container.appendChild(el);
+  });
+}
+
+// Get the fret window [lo, hi] locked to activePosition + tonic key
+function getPositionWindow() {
+  const sh = activePosition === 'free' ? 'C' : activePosition;
+  // For minor keys, use relative major root (3 semitones up) for window calculation
+  const keyRi = noteIdx(activeKey);
+  const tonicRi = activeKeyMinor ? (keyRi + 3) % 12 : keyRi;
+  const off = getOffset(sh, tonicRi, false);
+  const shapeData = SHAPES[sh];
+  const [loSpan, hiSpan] = shapeData.spanOverride || SHAPE_SPAN[sh];
+  return [loSpan + off, hiSpan + off];
+}
+function getOffset(sh,ri,isMinor){const st=isMinor&&SOR_MINOR[sh]!==undefined?SOR_MINOR[sh]:SOR[sh],of=isMinor&&SOF_MINOR[sh]!==undefined?SOF_MINOR[sh]:SOF[sh],on=(OPEN[st]+of)%12;return(ri-on+12)%12;}
+
+function drawFretboard(name) {
+  currentChordName=name;
+  updateChordDisplay(name);
+  const p=parseChordName(name), ri=p?noteIdx(p.root):-1;
+  const tones=ri>=0?getChordTones(name,activeMode):[];
+  const cv=document.getElementById('fb'), dpr=window.devicePixelRatio||1;
+
+  // Scale canvas to fill available height, locked aspect ratio
+  const FRETS=17, STRS=6;
+  const availH = document.getElementById('content-row').offsetHeight;
+  const BASE_H = 42 + 25*17 + 18; // 485
+  const scale  = Math.max(0.7, availH / BASE_H);
+  const FY=Math.round(25*scale), MT=Math.round(42*scale), MB=Math.round(18*scale);
+  const SX=Math.round(28*scale), ML=Math.round(54*scale), MR=Math.round(22*scale);
+  const W=ML+SX*(STRS-1)+MR, H=MT+FY*FRETS+MB;
+
+  // Give panel 40px more than canvas so centering leaves margin on both sides
+  document.getElementById('fb-panel').style.width = (W + 40) + 'px';
+
+  // Align key label with the string span on the canvas
+  // Panel is W+40 wide; canvas is centered with 20px margin each side.
+  // String area: ML from canvas left, spanning SX*(STRS-1). Center of string area:
+  const canvasLeft = 20; // left margin in panel
+  const strCenterX = canvasLeft + ML + SX*(STRS-1)/2;
+  const strSpanW = SX*(STRS-1) + ML*0.4;
+  const lbl = document.getElementById('fb-key-label');
+  if(lbl){ lbl.style.left = Math.round(strCenterX - strSpanW/2)+'px'; lbl.style.right='auto'; lbl.style.width=Math.round(strSpanW)+'px'; lbl.style.textAlign='center'; }
+
+  cv.width=W*dpr; cv.height=H*dpr; cv.style.width=W+'px'; cv.style.height=H+'px';
+  const c=cv.getContext('2d'); c.scale(dpr,dpr);
+  c.fillStyle='#122b58'; c.fillRect(0,0,W,H);
+
+  // Frets
+  for(let f=0;f<=FRETS;f++){
+    const y=MT+f*FY;
+    const isMarker=[3,5,7,9,12,15,17].includes(f);
+    c.strokeStyle=f===0?'#e8f0ff':f===12?'#90c0e0':isMarker?'#4a72a8':'#304e80';
+    c.lineWidth=f===0?5:f===12?2.5:isMarker?1.2:0.9;
+    c.beginPath();c.moveTo(ML,y);c.lineTo(ML+SX*(STRS-1),y);c.stroke();
+  }
+  // Strings
+  for(let s=0;s<STRS;s++){
+    const x=ML+s*SX; c.strokeStyle='#c0daf4'; c.lineWidth=0.6+(STRS-1-s)*0.3;
+    c.beginPath();c.moveTo(x,MT);c.lineTo(x,MT+FY*FRETS);c.stroke();
+  }
+  // Marker fret bands
+  [3,5,7,9,12,15,17].forEach(f=>{
+    const y=MT+f*FY-FY; c.fillStyle='rgba(80,140,200,0.07)';
+    c.fillRect(ML,y,SX*(STRS-1),FY);
+  });
+  // Inlays — larger and brighter
+  [3,5,7,9,12,15,17].forEach(f=>{
+    const y=MT+f*FY-FY/2;
+    const isDouble=f===12||f===17;
+    c.fillStyle=isDouble?'rgba(180,220,255,0.55)':'rgba(180,220,255,0.38)';
+    if(isDouble){
+      c.beginPath();c.arc(ML+SX*1.5,y,5,0,Math.PI*2);c.fill();
+      c.beginPath();c.arc(ML+SX*3.5,y,5,0,Math.PI*2);c.fill();
+    } else {
+      c.beginPath();c.arc(ML+SX*2.5,y,5,0,Math.PI*2);c.fill();
+    }
+    // Fret number on marker frets
+    c.fillStyle='rgba(220,235,255,0.85)';
+    c.font=`bold ${Math.round(11*scale)}px Space Mono,monospace`;
+    c.textAlign='right';
+    c.fillText(f, ML-6, y+4);
+  });
+  // Fret numbers + string names
+
+  ['E','A','D','G','B','e'].forEach((n,i)=>{c.fillStyle='rgba(220,235,255,0.80)';c.font=`bold ${Math.round(10*scale)}px Space Mono,monospace`;c.textAlign='center';c.fillText(n,ML+i*SX,MT-8);});
+
+  // CAGED labels — drawn on canvas left of fretboard, anchored to fret regions
+  {
+    const keyRi2=noteIdx(activeKey);
+    const tonicRi2=activeKeyMinor?(keyRi2+3)%12:keyRi2;
+    ['C','A','G','E','D'].forEach(sh=>{
+      const shOff=getOffset(sh,tonicRi2,false);
+      const shapeData2=SHAPES[sh];
+      const [shLo,shHi]=shapeData2.spanOverride||SHAPE_SPAN[sh];
+      const midFret=shLo+shOff+(shHi-shLo)/2;
+      const y=MT+midFret*FY;
+      if(y<MT||y>MT+FY*FRETS) return;
+      const isLocked=activePosition===sh;
+      c.save();
+      // All 5 forms always shown — locked one moderately brighter
+      c.font=`bold ${isLocked?22:14}px Space Mono,monospace`;
+      c.textAlign='center';
+      c.fillStyle=isLocked?'#ffffff':SC[sh];
+      c.globalAlpha=isLocked?0.90:0.45;
+      c.fillText(sh, ML/2, y+5);
+      if(isLocked){
+        // subtle bracket for locked position
+        const loY=MT+(shLo+shOff)*FY, hiY=MT+(shHi+shOff+1)*FY;
+        c.strokeStyle='rgba(255,255,255,0.25)'; c.lineWidth=1.2;
+        c.globalAlpha=0.25;
+        c.beginPath();
+        c.moveTo(ML-4,loY); c.lineTo(ML-10,loY);
+        c.lineTo(ML-10,hiY); c.lineTo(ML-4,hiY);
+        c.stroke();
+      }
+      c.restore();
+    });
+  }
+
+  // Chord name — removed from canvas, shown in #chord-display above
+
+  if(ri<0) return;
+  c.globalAlpha = 1; // ensure label block didn't leave alpha set
+
+  // ── Full-neck background: dim white dots for every key-scale tone ────────
+  // Drawn first so they sit under the bright form dots.
+  // Shows the complete scale across all 17 frets on all 6 strings.
+  {
+    const keyRi = noteIdx(activeKey);
+    // For 7b9 chords use harmonic minor of relative minor key
+    let keyInts;
+    if (p && p.quality === '7b9') {
+      // Phrygian dominant from chord root: 1, b2, 3, 4, 5, b6, b7
+      keyInts = [0,1,4,5,7,8,10].map(i => (ri + i) % 12);
+    } else {
+      keyInts = (activeKeyMinor ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11]).map(i => (keyRi + i) % 12);
+    }
+    const scaleSet = new Set(keyInts);
+    c.save();
+    for(let s = 0; s < STRS; s++) {
+      for(let f = 0; f <= FRETS; f++) {
+        if(!scaleSet.has(getNoteAt(s, f))) continue;
+        const x = ML + s*SX;
+        const y = f === 0 ? MT - 4 : MT + f*FY - FY/2;
+        c.beginPath(); c.arc(x, y, 5, 0, Math.PI*2);
+        c.fillStyle = 'rgba(255,255,255,0.15)';
+        c.fill();
+        c.strokeStyle = 'rgba(255,255,255,0.50)';
+        c.lineWidth = 1.0;
+        c.stroke();
+      }
+    }
+    c.restore();
+  }
+
+  const isMinor=['m','m7','mM7','m7b5','m9','m6','dim','dim7','ø7','ø'].includes(p.quality);
+  const shapes=activeShape==='all'?['C','A','G','E','D']:[activeShape];
+
+  // Core dot drawing function
+  // Convert #rrggbb to rgba(r,g,b,a) for reliable canvas alpha
+  function hexRgba(hex, a){
+    const h=hex.replace('#','');
+    const r=parseInt(h.slice(0,2),16), g=parseInt(h.slice(2,4),16), b=parseInt(h.slice(4,6),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  // interval: semitones from root (0=root, 3/4=3rd, 6/7=5th, 9/10/11=7th)
+  // symbol: root=letter, 3rd=asterisk(*), 5th=x, 7th=slash(/)
+  function getIntervalRole(interval) {
+    if(interval===0) return 'root';
+    if(interval===3||interval===4) return 'third';
+    if(interval===7) return 'fifth';
+    if(interval===9||interval===10||interval===11) return 'seventh';
+    return 'other';
+  }
+
+  function drawDot(x, y, note, ri, col, label){
+    const interval = (note - ri + 12) % 12;
+    const role = getIntervalRole(interval);
+    const isRoot = role === 'root';
+    const dotR = 10;
+
+    c.shadowColor=col; c.shadowBlur=isRoot?8:3;
+    c.beginPath(); c.arc(x,y,dotR,0,Math.PI*2);
+    c.fillStyle = isRoot ? hexRgba(col, 0.92) : hexRgba(col, 0.52);
+    c.fill();
+    c.shadowBlur=0;
+    // Root: white stroke right at the dot edge — no gap
+    c.strokeStyle = isRoot ? 'rgba(255,255,255,0.92)' : col;
+    c.lineWidth = isRoot ? 2.5 : 1.5;
+    c.stroke();
+
+    c.save();
+    c.lineCap='round'; c.lineWidth=2.2;
+    const sw = dotR * 0.42; // symbol half-width
+
+    if(role==='fifth'){
+      // 5th: x
+      c.strokeStyle='rgba(255,255,255,0.85)';
+      c.beginPath(); c.moveTo(x-sw,y-sw); c.lineTo(x+sw,y+sw); c.stroke();
+      c.beginPath(); c.moveTo(x+sw,y-sw); c.lineTo(x-sw,y+sw); c.stroke();
+    } else if(role==='third'){
+      // 3rd: slash /
+      c.strokeStyle='rgba(255,255,255,0.85)';
+      c.beginPath(); c.moveTo(x-sw,y+sw); c.lineTo(x+sw,y-sw); c.stroke();
+    }
+    // 7th: no symbol
+    c.restore();
+  }
+
+  // Determine fret window — locked to position if activePosition != 'free'
+  const positionLocked = activePosition !== 'free';
+  const [winLo, winHi] = positionLocked ? getPositionWindow() : [0, FRETS];
+  const winCol = positionLocked ? SC[activePosition] : null;
+
+  if(positionLocked){
+    // Position locked: the neck REGION is fixed (anchored to key tonic in activePosition form),
+    // but the actual CAGED form coloring follows which form the CHORD's root falls into.
+    // e.g. locked to A-position, Cmaj7 playing → C root lands in D-form area → D-form color.
+
+    const rootLabel = p ? (isMinor ? p.root.toLowerCase() : p.root) : '';
+
+    // Key tonic anchor — defines the neck region
+    const keyRi2 = noteIdx(activeKey);
+    const tonicRi2 = activeKeyMinor ? (keyRi2 + 3) % 12 : keyRi2;
+
+    // Determine which CAGED form the current chord's root falls into within the window.
+    // Check each form: compute where its root lands for THIS chord's root (ri),
+    // and see if that root fret is inside [winLo, winHi].
+    let chordForm = activePosition; // fallback
+    const formOrder = ['E','D','C','A','G']; // CAGED order ascending neck
+    for(const testSh of formOrder){
+      const testOff = getOffset(testSh, ri, isMinor);
+      const testShapeData = SHAPES[testSh];
+      const [tLo, tHi] = testShapeData.spanOverride || SHAPE_SPAN[testSh];
+      // Root fret for this form/chord
+      const rootFret = testOff; // offset IS the fret of the lowest root dot (f=0 in box)
+      // Actually: root dot is at SOF[sh] + off relative to open. Let's use anchor string.
+      // Simpler: check if any root dot from this form lands in the window
+      const roots = testShapeData.roots || [];
+      const inWindow = roots.some(({s, f}) => {
+        const fret = f + testOff;
+        return fret >= winLo && fret <= winHi;
+      });
+      if(inWindow){ chordForm = testSh; break; }
+    }
+
+    const col = SC[chordForm];
+    const sh = activePosition; // still use activePosition's BOX for dot placement
+    const shapeData = SHAPES[sh];
+    const off = getOffset(sh, tonicRi2, false);
+    const [loSpan, hiSpan] = shapeData.spanOverride || SHAPE_SPAN[sh];
+
+    if(activeMode==='arp'){
+      if (p && p.quality === '7b9') {
+        // Full window scan for 7b9 — scan from fret 0 to catch all chord tones
+        const winHi = hiSpan + off + 4;
+        for(let s=0; s<STRS; s++){
+          for(let f=0; f<=winHi; f++){
+            if(f<0||f>FRETS) continue;
+            const note=getNoteAt(s,f);
+            if(!tones.includes(note)) continue;
+            const x=ML+s*SX, y=f===0?MT-4:MT+f*FY-FY/2;
+            drawDot(x,y,note,ri,col,rootLabel);
+          }
+        }
+      } else {
+        // Draw only box positions that contain a chord tone
+        shapeData.box.forEach(({s, f}) => {
+          const fret = f + off; if(fret < 0 || fret > FRETS) return;
+          const note = getNoteAt(s, fret);
+          if(!tones.includes(note)) return;
+          const x = ML+s*SX, y = fret===0 ? MT-4 : MT+fret*FY-FY/2;
+          drawDot(x, y, note, ri, col, rootLabel);
+        });
+
+        // b7 rule: one fret below the shape window on any string that has it
+        const b7 = (ri + 10) % 12;
+        if(tones.includes(b7)){
+          for(let s=0; s<STRS; s++){
+            const f = loSpan + off - 1; if(f < 0) continue;
+            if(getNoteAt(s, f) === b7){
+              const x = ML+s*SX, y = f===0 ? MT-4 : MT+f*FY-FY/2;
+              drawDot(x, y, getNoteAt(s, f), ri, col, rootLabel);
+            }
+          }
+        }
+      }
+    } else {
+      // Scale mode
+      if (p && p.quality === '7b9') {
+        const winHi = hiSpan + off + 4;
+        for(let s=0; s<STRS; s++){
+          for(let f=0; f<=winHi; f++){
+            if(f<0||f>FRETS) continue;
+            const note=getNoteAt(s,f);
+            if(!tones.includes(note)) continue;
+            const x=ML+s*SX, y=f===0?MT-4:MT+f*FY-FY/2;
+            drawDot(x,y,note,ri,col,rootLabel);
+          }
+        }
+      } else {
+        for(let s=0; s<STRS; s++){
+          const [sLo, sHi] = shapeData.perStringSpan?.[s] ||
+                             (shapeData.defaultSpan ? shapeData.defaultSpan : [loSpan, hiSpan]);
+          for(let f = sLo+off; f <= sHi+off; f++){
+            if(f < 0 || f > FRETS) continue;
+            const note = getNoteAt(s, f);
+            if(!tones.includes(note)) continue;
+            const x = ML+s*SX, y = f===0 ? MT-4 : MT+f*FY-FY/2;
+            drawDot(x, y, note, ri, col, rootLabel);
+          }
+        }
+      }
+    }
+
+  } else {
+    // Free mode: each shape in its natural position using box dots
+    shapes.forEach(sh=>{
+      const col=SC[sh];
+      if(activeMode==='arp'){
+        const off=getOffset(sh,ri,isMinor);
+        const [loSpan,hiSpan]=SHAPES[sh].spanOverride||SHAPE_SPAN[sh];
+        if (p && p.quality === '7b9') {
+          // 7b9: scan from fret 0 to catch all chord tones
+          const winHi = hiSpan + off + 4;
+          for(let s=0; s<STRS; s++){
+            for(let f=0; f<=winHi; f++){
+              if(f<0||f>FRETS) continue;
+              const note=getNoteAt(s,f);
+              if(!tones.includes(note)) continue;
+              const x=ML+s*SX, y=f===0?MT-4:MT+f*FY-FY/2;
+              drawDot(x,y,note,ri,col,p.root);
+            }
+          }
+        } else {
+          SHAPES[sh].box.forEach(({s,f})=>{
+            if(f>hiSpan) return;
+            const fret=f+off; if(fret<0||fret>FRETS) return;
+            const note=getNoteAt(s,fret);
+            if(!tones.includes(note)) return;
+            const x=ML+s*SX, y=fret===0?MT-4:MT+fret*FY-FY/2;
+            drawDot(x,y,note,ri,col,p?(isMinor?p.root.toLowerCase():p.root):'');
+          });
+        }
+      } else {
+        // Scale mode
+        if (p && p.quality === '7b9') {
+          // 7b9: scan from fret 0 to catch all chord tones
+          const off = getOffset(sh, ri, false);
+          const shapeData = SHAPES[sh];
+          const [loSpan, hiSpan] = shapeData.spanOverride || SHAPE_SPAN[sh];
+          const winHi = hiSpan + off + 4;
+          for(let s=0; s<STRS; s++){
+            for(let f=0; f<=winHi; f++){
+              if(f<0||f>FRETS) continue;
+              const note=getNoteAt(s,f);
+              if(!tones.includes(note)) continue;
+              const x=ML+s*SX, y=f===0?MT-4:MT+f*FY-FY/2;
+              drawDot(x,y,note,ri,col,p.root);
+            }
+          }
+        } else {
+          const off=getOffset(sh,ri,false);
+          const shapeData=SHAPES[sh];
+          const [loSpan,hiSpan]=shapeData.spanOverride||SHAPE_SPAN[sh];
+          for(let s=0;s<STRS;s++){
+            const [sLo,sHi]=shapeData.perStringSpan?.[s]||(shapeData.defaultSpan?shapeData.defaultSpan:[loSpan,hiSpan]);
+            for(let f=sLo+off;f<=sHi+off;f++){
+              if(f<0||f>FRETS) continue;
+              const note=getNoteAt(s,f);
+              if(!tones.includes(note)) continue;
+              const x=ML+s*SX, y=f===0?MT-4:MT+f*FY-FY/2;
+              drawDot(x,y,note,ri,col,p?(isMinor?p.root.toLowerCase():p.root):'');
+            }
+          }
+        }
+      }
+    });
+  }
+  updateRomanPosition();
+}
+
+// ─── ROMAN PANEL POSITION ──────────────────────────────────
+// Vertically aligns the roman numeral with the locked form's
+// fret region on the canvas. Falls back to center in free mode.
+function updateRomanPosition() {
+  const inner = document.getElementById('roman-inner');
+  if (!inner) return;
+  const panel = document.getElementById('roman-panel');
+  const panelH = panel.offsetHeight;
+  if (panelH < 10) return; // not rendered yet
+
+  if (activePosition === 'free') {
+    inner.style.top = (panelH / 2) + 'px';
+    return;
+  }
+  const keyRi = noteIdx(activeKey);
+  const tonicRi = activeKeyMinor ? (keyRi + 3) % 12 : keyRi;
+  const off = getOffset(activePosition, tonicRi, false);
+  const shapeData = SHAPES[activePosition];
+  const [loSpan, hiSpan] = shapeData.spanOverride || SHAPE_SPAN[activePosition];
+  const midFret = loSpan + off + (hiSpan - loSpan) / 2;
+
+  // Match drawFretboard's scale calculation
+  const availH = document.getElementById('content-row').offsetHeight;
+  const BASE_H = 42 + 25 * 17 + 18;
+  const scale = Math.max(0.7, availH / BASE_H);
+  const FY = Math.round(25 * scale);
+  const MT = Math.round(42 * scale);
+
+  const y = MT + midFret * FY;
+  const clamped = Math.max(70, Math.min(panelH - 70, y));
+  inner.style.top = clamped + 'px';
+}
+
+// ─── MIC ───────────────────────────────────────────────────
+let micOn=false,acMic=null,anMic=null,stMic=null,rafMic=null,lastNote=null,lastCount=0;
+function toggleMic(){
+  const ov=document.getElementById('mic-overlay');
+  if(micOn){
+    micOn=false; if(rafMic)cancelAnimationFrame(rafMic);
+    if(stMic)stMic.getTracks().forEach(t=>t.stop()); if(acMic)acMic.close();
+    ov.classList.remove('on'); document.getElementById('mic-btn').textContent='🎙 Mic';
+  } else {
+    ov.classList.add('on'); document.getElementById('mic-btn').textContent='🎙 On'; startMic();
+  }
+}
+async function startMic(){
+  try{
+    stMic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true}});
+    acMic=new(window.AudioContext||window.webkitAudioContext)();
+    anMic=acMic.createAnalyser(); anMic.fftSize=2048;
+    acMic.createMediaStreamSource(stMic).connect(anMic);
+    micOn=true; micLoop();
+  }catch(e){document.getElementById('m-note').textContent='!';}
+}
+function autoCorr(buf,sr){
+  let rms=0; for(let i=0;i<buf.length;i++)rms+=buf[i]*buf[i]; rms=Math.sqrt(rms/buf.length);
+  if(rms<0.015)return -1;
+  let r1=0,r2=buf.length-1;
+  for(let i=0;i<buf.length/2;i++){if(Math.abs(buf[i])<0.2){r1=i;break;}}
+  for(let i=1;i<buf.length/2;i++){if(Math.abs(buf[buf.length-i])<0.2){r2=buf.length-i;break;}}
+  const b=buf.slice(r1,r2),corr=new Array(b.length).fill(0);
+  for(let i=0;i<b.length;i++)for(let j=0;j<b.length-i;j++)corr[i]+=b[j]*b[j+i];
+  let d=0; while(corr[d]>corr[d+1])d++;
+  let maxV=-1,maxP=-1; for(let i=d;i<b.length;i++){if(corr[i]>maxV){maxV=corr[i];maxP=i;}}
+  let T=maxP; const x1=corr[T-1],x2=corr[T],x3=corr[T+1],a=(x1+x3-2*x2)/2,bv=(x3-x1)/2;
+  if(a)T=T-bv/(2*a); return sr/T;
+}
+function micLoop(){
+  if(!micOn)return;
+  const buf=new Float32Array(anMic.fftSize); anMic.getFloatTimeDomainData(buf);
+  let rms=0; for(let i=0;i<buf.length;i++)rms+=buf[i]*buf[i]; rms=Math.sqrt(rms/buf.length);
+  document.getElementById('m-level').style.width=Math.min(100,Math.round(rms*600))+'%';
+  const freq=autoCorr(buf,acMic.sampleRate);
+  if(freq>0){
+    const midi=Math.round(12*Math.log2(freq/440)+69);
+    const name=NOTES[((midi%12)+12)%12];
+    document.getElementById('m-note').textContent=name;
+    const tones=currentChordName?getChordTones(currentChordName,activeMode):[];
+    const ni=noteIdx(name), inArp=tones.includes(ni);
+    document.getElementById('m-inarp').textContent=inArp?'✓ In '+activeMode:'○ Outside '+activeMode;
+    document.getElementById('m-inarp').className=inArp?'in-arp':'out-arp';
+    if(currentChordName){
+      const ct=getChordTones(currentChordName,activeMode);
+      document.getElementById('m-pills').innerHTML=ct.map(t=>`<span class="apill${t===ni?' lit':''}">${noteName(t)}</span>`).join('');
+    }
+    if(name!==lastNote){lastNote=name;lastCount=1;}else lastCount++;
+  } else {
+    document.getElementById('m-note').textContent='—'; lastNote=null; lastCount=0;
+  }
+  rafMic=requestAnimationFrame(micLoop);
+}
+
+// ─── INIT ──────────────────────────────────────────────────
+document.getElementById('chart-editor').value=`4/4
+[C]
+Dm7 | G7  | Cmaj7 | Cmaj7
+Dm7 | G7  | Cmaj7 | Cmaj7
+[G]
+Am7 | D7  | Gmaj7 | Gmaj7
+Am7 | D7  | Gmaj7 | Gmaj7`;
+
+parseAndLoad();
+drawFretboard('Dm7');
+populateChartSelect();
+
+// Redraw fretboard on window resize to maintain aspect ratio
+window.addEventListener('resize', () => {
+  if(currentChordName) drawFretboard(currentChordName);
+  else drawFretboard('Dm7');
+  updateRomanPosition();
+});
+</script>
+</body>
+</html>
