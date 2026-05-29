@@ -374,9 +374,7 @@ canvas#fb{display:block;flex-shrink:0}
         </div>
         <textarea id="chart-editor" placeholder="4/4&#10;[C]&#10;Dm7 | G7  | Cmaj7 | Cmaj7&#10;[G]&#10;Am7 | D7  | Gmaj7 | Gmaj7"></textarea>
         <div id="editor-bar">
-          <select id="chart-select" class="ctrl" onchange="loadSavedChart()" style="max-width:150px">
-            <option value="">— Saved charts —</option>
-          </select>
+          <select id="chart-select" class="ctrl" onchange="loadSavedChart()" style="max-width:160px"></select>
           <button class="btn" onclick="saveChart()">Save</button>
           <button class="btn" onclick="deleteChart()" style="color:var(--danger)">Del</button>
           <span class="hint" id="save-hint" style="margin-left:4px"></span>
@@ -467,11 +465,13 @@ function getChordTones(chord, mode) {
     const keyRi = noteIdx(activeKey);
 
     // ── Dominant 7b9: Phrygian dominant from chord root
-    // = 5th mode of harmonic minor. Contains 1, b2, 3, 4, 5, b6, b7
-    // All chord tones present: root, maj3, 5, b7, b9
     if (q === '7b9') {
-      const phrygDom = [0,1,4,5,7,8,10];
-      return phrygDom.map(i => (ri + i) % 12);
+      return [0,1,4,5,7,8,10].map(i => (ri + i) % 12);
+    }
+
+    // ── Dominant 7: Mixolydian from chord root (covers secondary dominants correctly)
+    if (q === '7') {
+      return [0,2,4,5,7,9,10].map(i => (ri + i) % 12);
     }
 
     // ── Standard: major key → Ionian, minor key → natural minor
@@ -1133,7 +1133,6 @@ function playBass(name) {
 }
 
 // ─── CHART SAVE/LOAD ───────────────────────────────────────
-const SKEY='gt_charts';
 
 // ── Built-in charts — always available, live in the file itself ──
 const BUILTIN_CHARTS = {
@@ -1145,49 +1144,60 @@ F#m7b5 | B7b9 | Em | Em
 Am7 | D7 | Gmaj7 | Cmaj7
 F#m7b5 | B7b9 | Em7 A7 | Dm7 G7
 F#m7b5 | B7b9 | Em | Em`,
+  'Blue Bossa': `4/4
+[Cm]
+Cm | Cm | Fm7 | Bb7
+Ebmaj7 | Ebmaj7 | Dm7b5 | G7#5
+Cm | Cm | Dm7b5 | G7#5
+Cm | A7#9 | Dm7b5 | G7#5
+Cm | A7#9 | Dm7b5 | G7#5
+Cm`,
 };
 
-function getSaved(){
-  let local={};
-  try{local=JSON.parse(localStorage.getItem(SKEY)||'{}');}catch(e){}
-  // Merge: built-ins first, then user-saved (user can override a built-in name)
+const SKEY = 'gt_charts';
+
+function getSaved() {
+  let local = {};
+  try { local = JSON.parse(localStorage.getItem(SKEY) || '{}'); } catch(e) {}
   return Object.assign({}, BUILTIN_CHARTS, local);
 }
 function populateChartSelect() {
-  const charts=getSaved(), sel=document.getElementById('chart-select'), cur=sel.value;
-  sel.innerHTML='<option value="">— Saved charts —</option>';
-  Object.keys(charts).sort().forEach(n=>{
-    const o=document.createElement('option');
-    o.value=n; o.textContent=n+(BUILTIN_CHARTS[n]&&!JSON.parse(localStorage.getItem(SKEY)||'{}')[n]?' ♪':'');
+  const charts = getSaved(), sel = document.getElementById('chart-select'), cur = sel.value;
+  sel.innerHTML = '<option value="">— Charts —</option>';
+  Object.keys(charts).sort().forEach(n => {
+    const o = document.createElement('option');
+    o.value = n;
+    o.textContent = n + (BUILTIN_CHARTS[n] && !JSON.parse(localStorage.getItem(SKEY) || '{}')[n] ? ' ♪' : '');
     sel.appendChild(o);
   });
-  if(cur&&charts[cur]) sel.value=cur;
-}
-function saveChart() {
-  const text=document.getElementById('chart-editor').value.trim(); if(!text) return;
-  const lines=text.split('\n').filter(l=>l.trim()&&!l.match(/^\d+\/\d+$/));
-  const def=lines[0]?lines[0].replace(/\|/g,'').trim().split(/\s+/).slice(0,3).join(' '):'Chart';
-  const name=prompt('Save as:',def); if(!name) return;
-  const charts=getSaved(); charts[name.trim()]=text;
-  localStorage.setItem(SKEY,JSON.stringify(charts));
-  populateChartSelect(); document.getElementById('chart-select').value=name.trim();
-  const h=document.getElementById('save-hint'); h.textContent='Saved ✓';
-  setTimeout(()=>h.textContent='',2000);
+  if (cur && charts[cur]) sel.value = cur;
 }
 function loadSavedChart() {
-  const name=document.getElementById('chart-select').value; if(!name) return;
-  const charts=getSaved();
-  if(charts[name]){document.getElementById('chart-editor').value=charts[name];parseAndLoad();}
+  const name = document.getElementById('chart-select').value; if (!name) return;
+  const charts = getSaved();
+  if (charts[name]) { document.getElementById('chart-editor').value = charts[name]; parseAndLoad(); }
+}
+function saveChart() {
+  const text = document.getElementById('chart-editor').value.trim(); if (!text) return;
+  const lines = text.split('\n').filter(l => l.trim() && !l.match(/^\d+\/\d+$/));
+  const def = lines[0] ? lines[0].replace(/\|/g,'').trim().split(/\s+/).slice(0,3).join(' ') : 'Chart';
+  const name = prompt('Save as:', def); if (!name) return;
+  const local = JSON.parse(localStorage.getItem(SKEY) || '{}');
+  local[name.trim()] = text;
+  localStorage.setItem(SKEY, JSON.stringify(local));
+  populateChartSelect(); document.getElementById('chart-select').value = name.trim();
+  const h = document.getElementById('save-hint'); h.textContent = 'Saved ✓';
+  setTimeout(() => h.textContent = '', 2000);
 }
 function deleteChart() {
-  const name=document.getElementById('chart-select').value; if(!name) return;
-  if(BUILTIN_CHARTS[name]&&!JSON.parse(localStorage.getItem(SKEY)||'{}')[name]){
-    alert('"'+name+'" is a built-in chart and cannot be deleted.'); return;
+  const name = document.getElementById('chart-select').value; if (!name) return;
+  if (BUILTIN_CHARTS[name] && !JSON.parse(localStorage.getItem(SKEY) || '{}')[name]) {
+    alert('"' + name + '" is a built-in chart and cannot be deleted.'); return;
   }
-  if(!confirm('Delete "'+name+'"?')) return;
-  const local=JSON.parse(localStorage.getItem(SKEY)||'{}'); delete local[name];
-  localStorage.setItem(SKEY,JSON.stringify(local));
-  populateChartSelect(); document.getElementById('save-hint').textContent='';
+  if (!confirm('Delete "' + name + '"?')) return;
+  const local = JSON.parse(localStorage.getItem(SKEY) || '{}'); delete local[name];
+  localStorage.setItem(SKEY, JSON.stringify(local));
+  populateChartSelect(); document.getElementById('save-hint').textContent = '';
 }
 
 // ─── FRETBOARD ─────────────────────────────────────────────
@@ -1200,79 +1210,90 @@ const SC={C:'#4F8EF7',A:'#E8593C',G:'#3BAF7E',E:'#E8A020',D:'#9B5CF6'};
 const SHAPES={
   // s values: 0=low E, 1=A, 2=D, 3=G, 4=B, 5=high e (matching left-to-right display)
   // Rule: no redundant notes — if a note appears on an adjacent string at the same fret, omit the higher duplicate.
-  C:{box:[{s:0,f:0},{s:0,f:2},{s:0,f:3},{s:1,f:0},{s:1,f:1},{s:1,f:2},{s:1,f:3},{s:2,f:0},{s:2,f:2},{s:3,f:0},{s:3,f:2},{s:3,f:3},{s:4,f:0},{s:4,f:1},{s:4,f:3},{s:5,f:0},{s:5,f:1},{s:5,f:3}],roots:[{s:1,f:3},{s:4,f:1}]},
-  A:{spanOverride:[0,6],perStringSpan:{0:[0,4],4:[1,5],5:[2,6]},defaultSpan:[1,4],
-    pent:[
-      {s:0,f:2},{s:0,f:4},
-      {s:1,f:2},{s:1,f:4},
-      {s:2,f:1},{s:2,f:4},
-      {s:3,f:1},{s:3,f:4},
-      {s:4,f:2},{s:4,f:4},
-      {s:5,f:2},{s:5,f:4},
-    ],
-    box:[
-    {s:0,f:0},{s:0,f:2},{s:0,f:4},
-    {s:1,f:1},{s:1,f:2},{s:1,f:4},
-    {s:2,f:1},{s:2,f:2},{s:2,f:4},
-    {s:3,f:1},{s:3,f:2},{s:3,f:3},{s:3,f:4},
-    {s:4,f:2},{s:4,f:4},{s:4,f:5},
-    {s:5,f:2},{s:5,f:4},{s:5,f:5},{s:5,f:6},
-  ],roots:[{s:1,f:2},{s:3,f:4}]},
-  // G FORM — EXCEPTION: anchored at OPEN G chord (root on low E fret 3, G string open).
-  // Unlike A form (anchored at B-barre fret 2), G form does NOT have a high-octave version.
-  // It lives at the bottom of the neck. Scope: open strings through ~fret 12.
-  // Note: F# (the 7) is added on D string fret 4 to complete the scale, since the
-  // form's natural "below-root" position on G string would be fret -1 (doesn't exist).
-  G:{
-    spanOverride:[0,4],
+  // C FORM — fully moveable 6-string soloing box. Root on A str at f=3, B str at f=1.
+  // Span [0,3]: anchor note (A string fret 3) = root via SOR=1, SOF=3.
+  C:{
+    spanOverride:[0,3],
     defaultSpan:[0,3],
-    perStringSpan:{2:[0,4],3:[0,4]},
     box:[
-      {s:0,f:0},{s:0,f:2},{s:0,f:3},   // low E: E (6), F# (7), G (R)
-      {s:1,f:0},{s:1,f:2},{s:1,f:3},   // A:     A (2), B (3), C (4)
-      {s:2,f:0},{s:2,f:2},{s:2,f:4},   // D:     D (5), E (6), F# (7) ← added
-      {s:3,f:0},{s:3,f:2},{s:3,f:4},   // G:     G (R), A (2), B (3) / C# for A7
-      {s:4,f:0},{s:4,f:1},{s:4,f:3},   // B:     B (3), C (4), D (5)
-      {s:5,f:0},{s:5,f:2},{s:5,f:3}    // high e: E (6), F# (7), G (R)
+      {s:0,f:0},{s:0,f:1},{s:0,f:3},   // low E: 3rd, 4th, 5th
+      {s:1,f:0},{s:1,f:2},{s:1,f:3},   // A:     6th, 7th, R
+      {s:2,f:0},{s:2,f:2},{s:2,f:3},   // D:     2nd, 3rd, 4th
+      {s:3,f:0},{s:3,f:2},             // G:     5th, 6th
+      {s:4,f:0},{s:4,f:1},{s:4,f:3},   // B:     7th, R,   2nd
+      {s:5,f:0},{s:5,f:1},{s:5,f:3},   // high e: 3rd, 4th, 5th
     ],
-    roots:[{s:0,f:3},{s:3,f:0}]
+    roots:[{s:1,f:3},{s:4,f:1}]
   },
-  // E FORM — anchored at open E chord (root on low E fret 0, D string fret 2, high e fret 0).
-  // Pattern given at F chord reference (E shape barred at fret 1) then shifted down 1 for storage.
-  // Negative f values are below the nut at E chord but activate as form moves up the neck.
-  // Minor corollary: C#m at same position — root on B string fret 2 (C# = relative minor of E).
+  // A FORM — fully moveable 6-string soloing box. Root on A str at f=2 (SOR=1, SOF=2).
+  // Span [0,6]: root sits near low end, box extends 4 frets above.
+  // Roots also on G string (f=4).
+  A:{
+    spanOverride:[0,6],
+    defaultSpan:[1,4],
+    perStringSpan:{0:[0,4], 4:[2,5], 5:[2,6]},
+    box:[
+      {s:0,f:0},{s:0,f:2},{s:0,f:4},   // low E: 4th, 5th, 6th
+      {s:1,f:1},{s:1,f:2},{s:1,f:4},   // A:     7th, R,   2nd
+      {s:2,f:1},{s:2,f:2},{s:2,f:4},   // D:     3rd, 4th, 5th
+      {s:3,f:1},{s:3,f:3},{s:3,f:4},   // G:     6th, 7th, R
+      {s:4,f:2},{s:4,f:4},{s:4,f:5},   // B:     2nd, 3rd, 4th
+      {s:5,f:2},{s:5,f:4},{s:5,f:6},   // high e: 5th, 6th, 7th
+    ],
+    roots:[{s:1,f:2},{s:3,f:4}]
+  },
+  // G FORM — fully moveable 6-string soloing box. Root on low E at f=3 (SOR=0, SOF=3).
+  // Span [-2,3]: root at TOP of span; all other notes are at lower frets (toward nut).
+  // Roots also on G string (f=0) and high e (f=3).
+  G:{
+    spanOverride:[-2,3],
+    defaultSpan:[0,3],
+    perStringSpan:{2:[-2,2], 3:[-1,2]},
+    belowNutExtend:[2],
+    box:[
+      {s:0,f:0},{s:0,f:2},{s:0,f:3},   // low E:  6th, 7th, R
+      {s:1,f:0},{s:1,f:2},{s:1,f:3},   // A:      2nd, 3rd, 4th
+      {s:2,f:-2},{s:2,f:0},{s:2,f:2},  // D:      4th, 5th, 6th
+      {s:3,f:-1},{s:3,f:0},{s:3,f:2},  // G:      7th, R,   2nd
+      {s:4,f:0},{s:4,f:1},{s:4,f:3},   // B:      3rd, 4th, 5th
+      {s:5,f:0},{s:5,f:2},{s:5,f:3},   // high e: 6th, 7th, R
+    ],
+    roots:[{s:0,f:3},{s:3,f:0},{s:5,f:3}]
+  },
+  // E FORM — fully moveable 6-string soloing box. Root on low E at f=0 (SOR=0, SOF=0).
+  // Span [0,4]: root at low end, box extends 4 frets above.
+  // Roots also on D string (f=2) and high e (f=0).
+  // Span [-1,2]: starts 1 fret below root, covers 4 fret positions.
   E:{
     spanOverride:[-1,2],
-    defaultSpan:[0,2],
-    perStringSpan:{0:[-1,2],1:[-1,2],2:[-1,2],3:[-1,2],4:[-1,2],5:[-1,2]},
+    defaultSpan:[-1,2],
+    perStringSpan:{4:[0,2]},
     box:[
-      {s:0,f:-1},{s:0,f:0},{s:0,f:2},  // low E: D#(7th for F+), E(R), F#
-      {s:1,f:-1},{s:1,f:0},{s:1,f:2},  // A:     G#(for F+), A, B
-      {s:2,f:-1},{s:2,f:0},{s:2,f:1},{s:2,f:2},  // D: b6(f:-1), b7(f:0), maj7(f:1), R(f:2)
-      {s:3,f:-1},{s:3,f:1},{s:3,f:2},  // G:     F#(for F+), G#, A
-      {s:4,f:0},{s:4,f:2},             // B: b7(f:0), minR/6th(f:2)
-      {s:5,f:-1},{s:5,f:0},{s:5,f:2}   // e:     D#(for F+), E(R), F#
+      {s:0,f:-1},{s:0,f:0},{s:0,f:2},  // low E: 7th, R,   2nd
+      {s:1,f:-1},{s:1,f:0},{s:1,f:2},  // A:     3rd, 4th, 5th
+      {s:2,f:-1},{s:2,f:1},{s:2,f:2},  // D:     6th, 7th, R
+      {s:3,f:-1},{s:3,f:1},{s:3,f:2},  // G:     2nd, 3rd, 4th
+      {s:4,f:0},{s:4,f:2},             // B:     5th, 6th
+      {s:5,f:-1},{s:5,f:0},{s:5,f:2},  // high e: 7th, R,  2nd
     ],
     roots:[{s:0,f:0},{s:2,f:2},{s:5,f:0}]
   },
-  // D FORM — anchored at open D chord (root on D string fret 0, B string fret 3).
-  // Pattern given at E chord reference (D form shifted +2) then shifted down 2 for storage.
-  // Negative f values (e.g. f=-1,-2) are below the nut at D chord but become accessible
-  // as the form moves up the neck for higher chords.
-  // Minor corollary: Bm at same position — root on B string fret 0 (open B = relative minor of D).
+  // D FORM — fully moveable 6-string soloing box. Root starts on low E at f=-2 (SOR=2,SOF=0).
+  // Span [-2,3]: 6 fret positions, root at the low end on low E and high e.
+  // Roots on low E (f=-2), D string (f=0), B string (f=3), high e (f=-2).
   D:{
     spanOverride:[-2,3],
-    defaultSpan:[0,3],
-    perStringSpan:{0:[-2,2],1:[-2,2],2:[-1,2],3:[-1,2]},
+    defaultSpan:[-2,2],
+    perStringSpan:{2:[-1,2], 3:[-1,2], 4:[0,3], 5:[0,3]},
     box:[
-      {s:0,f:-2},{s:0,f:0},{s:0,f:2},  // low E: D(R for E+), E(2nd), F#(3rd)
-      {s:1,f:-2},{s:1,f:0},{s:1,f:2},  // A:     G(4th for D+), A(5th), B(6th)
-      {s:2,f:-1},{s:2,f:0},{s:2,f:2},  // D:     C#(7th for D+), D(R), E(2nd)
-      {s:3,f:-1},{s:3,f:0},{s:3,f:2},  // G:     F#(3rd for D+), G(4th), A(5th)
-      {s:4,f:0},{s:4,f:2},{s:4,f:3},   // B:     B(6th/minor R), C#(7th), D(R)
-      {s:5,f:0},{s:5,f:2},{s:5,f:3}    // e:     E(2nd), F#(3rd), G(4th)
+      {s:0,f:-2},{s:0,f:0},{s:0,f:2},  // low E:  R,   2nd, 3rd
+      {s:1,f:-2},{s:1,f:0},{s:1,f:2},  // A:      4th, 5th, 6th
+      {s:2,f:-1},{s:2,f:0},{s:2,f:2},  // D:      7th, R,   2nd
+      {s:3,f:-1},{s:3,f:0},{s:3,f:2},  // G:      3rd, 4th, 5th
+      {s:4,f:0},{s:4,f:2},{s:4,f:3},   // B:      6th, 7th, R
+      {s:5,f:0},{s:5,f:2},{s:5,f:3},   // high e: 2nd, 3rd, 4th
     ],
-    roots:[{s:2,f:0},{s:4,f:3}]  // D string open, B string fret 3
+    roots:[{s:0,f:-2},{s:2,f:0},{s:4,f:3}]
   },
 };
 
@@ -1369,6 +1390,22 @@ function getRomanNumeral(chordName, keyOverride, keyMinorOverride) {
   return r;
 }
 
+// Shrink #roman-display font until the text fits within the panel's inner width
+function fitRomanDisplay() {
+  const el = document.getElementById('roman-display');
+  const panel = document.getElementById('roman-panel');
+  if (!el || !panel) return;
+  const maxW = panel.offsetWidth - 18; // 8px padding each side + 1px border wiggle
+  const ctx = document.createElement('canvas').getContext('2d');
+  let size = 28;
+  ctx.font = `bold ${size}px 'Space Mono',monospace`;
+  while (size > 10 && ctx.measureText(el.textContent).width > maxW) {
+    size--;
+    ctx.font = `bold ${size}px 'Space Mono',monospace`;
+  }
+  el.style.fontSize = size + 'px';
+}
+
 // Update Roman numeral display — in the roman-panel to the right of fretboard
 function updateChordDisplay(name) {
   const rdEl = document.getElementById('roman-display');
@@ -1376,6 +1413,7 @@ function updateChordDisplay(name) {
   const ctEl = document.getElementById('roman-chord-tonic');
   if (!name) {
     rdEl.textContent = '—';
+    rdEl.style.fontSize = '';
     if(rkEl) rkEl.textContent = '—';
     if(ctEl) ctEl.textContent = '—';
     return;
@@ -1383,6 +1421,7 @@ function updateChordDisplay(name) {
   // Use per-chord key (from [KEY] marker) so panel always shows correct function
   const roman = getRomanForCell(currentChordIdx);
   rdEl.textContent = roman || name;
+  fitRomanDisplay();
   const ch = chordList[currentChordIdx];
   const dispKey = ch?.key || activeKey;
   const dispMinor = ch?.key ? ch.keyMinor : activeKeyMinor;
@@ -1436,6 +1475,7 @@ function getPositionWindow() {
 }
 function getOffset(sh,ri,isMinor){const st=isMinor&&SOR_MINOR[sh]!==undefined?SOR_MINOR[sh]:SOR[sh],of=isMinor&&SOF_MINOR[sh]!==undefined?SOF_MINOR[sh]:SOF[sh],on=(OPEN[st]+of)%12;return(ri-on+12)%12;}
 
+
 function drawFretboard(name) {
   currentChordName=name;
   updateChordDisplay(name);
@@ -1450,6 +1490,9 @@ function drawFretboard(name) {
   const scale  = Math.max(0.7, availH / BASE_H);
   const FY=Math.round(25*scale), MT=Math.round(42*scale), MB=Math.round(18*scale);
   const SX=Math.round(28*scale), ML=Math.round(54*scale), MR=Math.round(22*scale);
+  // Uniform y for any fret: open-string dots sit one fret-space above the nut,
+  // giving identical spacing between every adjacent pair of dots.
+  const dotY = f => MT+f*FY-FY/2;
   const W=ML+SX*(STRS-1)+MR, H=MT+FY*FRETS+MB;
 
   // Give panel 40px more than canvas so centering leaves margin on both sides
@@ -1505,7 +1548,7 @@ function drawFretboard(name) {
   });
   // Fret numbers + string names
 
-  ['E','A','D','G','B','e'].forEach((n,i)=>{c.fillStyle='rgba(220,235,255,0.80)';c.font=`bold ${Math.round(10*scale)}px Space Mono,monospace`;c.textAlign='center';c.fillText(n,ML+i*SX,MT-8);});
+  ['E','A','D','G','B','e'].forEach((n,i)=>{c.fillStyle='rgba(220,235,255,0.80)';c.font=`bold ${Math.round(10*scale)}px Space Mono,monospace`;c.textAlign='center';c.fillText(n,ML+i*SX,MT-FY);});
 
   // CAGED labels — drawn on canvas left of fretboard, anchored to fret regions
   {
@@ -1553,8 +1596,9 @@ function drawFretboard(name) {
     // For 7b9 chords use harmonic minor of relative minor key
     let keyInts;
     if (p && p.quality === '7b9') {
-      // Phrygian dominant from chord root: 1, b2, 3, 4, 5, b6, b7
-      keyInts = [0,1,4,5,7,8,10].map(i => (ri + i) % 12);
+      keyInts = [0,1,4,5,7,8,10].map(i => (ri + i) % 12);   // Phrygian dominant
+    } else if (p && p.quality === '7') {
+      keyInts = [0,2,4,5,7,9,10].map(i => (ri + i) % 12);   // Mixolydian
     } else {
       keyInts = (activeKeyMinor ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11]).map(i => (keyRi + i) % 12);
     }
@@ -1564,7 +1608,7 @@ function drawFretboard(name) {
       for(let f = 0; f <= FRETS; f++) {
         if(!scaleSet.has(getNoteAt(s, f))) continue;
         const x = ML + s*SX;
-        const y = f === 0 ? MT - 4 : MT + f*FY - FY/2;
+        const y = MT + f*FY - FY/2;
         c.beginPath(); c.arc(x, y, 5, 0, Math.PI*2);
         c.fillStyle = 'rgba(255,255,255,0.15)';
         c.fill();
@@ -1592,7 +1636,7 @@ function drawFretboard(name) {
   function getIntervalRole(interval) {
     if(interval===0) return 'root';
     if(interval===3||interval===4) return 'third';
-    if(interval===7) return 'fifth';
+    if(interval===6||interval===7) return 'fifth';   // 6=b5 (dim/half-dim), 7=P5
     if(interval===9||interval===10||interval===11) return 'seventh';
     return 'other';
   }
@@ -1626,6 +1670,12 @@ function drawFretboard(name) {
       // 3rd: slash /
       c.strokeStyle='rgba(255,255,255,0.85)';
       c.beginPath(); c.moveTo(x-sw,y+sw); c.lineTo(x+sw,y-sw); c.stroke();
+    } else if(interval === 1 && p && p.quality === '7b9'){
+      // b9: caret ∧
+      c.fillStyle='rgba(255,255,255,0.90)';
+      c.font=`bold ${Math.round(9*scale)}px DM Sans,sans-serif`;
+      c.textAlign='center'; c.textBaseline='middle';
+      c.fillText('∧',x,y);
     }
     // 7th: no symbol
     c.restore();
@@ -1675,63 +1725,38 @@ function drawFretboard(name) {
     const [loSpan, hiSpan] = shapeData.spanOverride || SHAPE_SPAN[sh];
 
     if(activeMode==='arp'){
-      if (p && p.quality === '7b9') {
-        // Full window scan for 7b9 — scan from fret 0 to catch all chord tones
-        const winHi = hiSpan + off + 4;
-        for(let s=0; s<STRS; s++){
-          for(let f=0; f<=winHi; f++){
-            if(f<0||f>FRETS) continue;
-            const note=getNoteAt(s,f);
-            if(!tones.includes(note)) continue;
-            const x=ML+s*SX, y=f===0?MT-4:MT+f*FY-FY/2;
-            drawDot(x,y,note,ri,col,rootLabel);
-          }
-        }
-      } else {
-        // Draw only box positions that contain a chord tone
-        shapeData.box.forEach(({s, f}) => {
-          const fret = f + off; if(fret < 0 || fret > FRETS) return;
-          const note = getNoteAt(s, fret);
-          if(!tones.includes(note)) return;
-          const x = ML+s*SX, y = fret===0 ? MT-4 : MT+fret*FY-FY/2;
-          drawDot(x, y, note, ri, col, rootLabel);
-        });
-
-        // b7 rule: one fret below the shape window on any string that has it
-        const b7 = (ri + 10) % 12;
-        if(tones.includes(b7)){
-          for(let s=0; s<STRS; s++){
-            const f = loSpan + off - 1; if(f < 0) continue;
-            if(getNoteAt(s, f) === b7){
-              const x = ML+s*SX, y = f===0 ? MT-4 : MT+f*FY-FY/2;
-              drawDot(x, y, getNoteAt(s, f), ri, col, rootLabel);
-            }
-          }
-        }
+      for(let s=0;s<STRS;s++) for(let f=winLo;f<=winHi;f++){
+        if(f<0||f>FRETS) continue;
+        const note=getNoteAt(s,f); if(!tones.includes(note)) continue;
+        drawDot(ML+s*SX,dotY(f),note,ri,col,rootLabel);
       }
     } else {
       // Scale mode
-      if (p && p.quality === '7b9') {
-        const winHi = hiSpan + off + 4;
-        for(let s=0; s<STRS; s++){
-          for(let f=0; f<=winHi; f++){
-            if(f<0||f>FRETS) continue;
-            const note=getNoteAt(s,f);
-            if(!tones.includes(note)) continue;
-            const x=ML+s*SX, y=f===0?MT-4:MT+f*FY-FY/2;
-            drawDot(x,y,note,ri,col,rootLabel);
-          }
+      if (p && (p.quality === '7b9' || p.quality === '7')) {
+        const extLo = winLo - 1, extHi = winHi + 1;
+        for(let s=0;s<STRS;s++) for(let f=extLo;f<=extHi;f++){
+          if(f<0||f>FRETS) continue;
+          const note=getNoteAt(s,f); if(!tones.includes(note)) continue;
+          drawDot(ML+s*SX,dotY(f),note,ri,col,rootLabel);
         }
       } else {
         for(let s=0; s<STRS; s++){
           const [sLo, sHi] = shapeData.perStringSpan?.[s] ||
                              (shapeData.defaultSpan ? shapeData.defaultSpan : [loSpan, hiSpan]);
-          for(let f = sLo+off; f <= sHi+off; f++){
-            if(f < 0 || f > FRETS) continue;
+          let adjLo=sLo+off, adjHi=sHi+off;
+          if(adjLo<0 && shapeData.belowNutExtend?.includes(s)){
+            let lost=0;
+            for(let bf=adjLo;bf<0;bf++) if(tones.includes(getNoteAt(s,bf))) lost++;
+            adjLo=0;
+            let ext=0, nf=adjHi+1;
+            while(ext<lost && nf<=FRETS){ if(tones.includes(getNoteAt(s,nf))) ext++; adjHi=nf; nf++; }
+          }
+          const scanHi = adjHi > sHi+off ? adjHi : winHi;
+          for(let f=adjLo; f<=scanHi; f++){
+            if(f<winLo||f<0||f>FRETS) continue;
             const note = getNoteAt(s, f);
             if(!tones.includes(note)) continue;
-            const x = ML+s*SX, y = f===0 ? MT-4 : MT+f*FY-FY/2;
-            drawDot(x, y, note, ri, col, rootLabel);
+            drawDot(ML+s*SX, dotY(f), note, ri, col, rootLabel);
           }
         }
       }
@@ -1752,8 +1777,7 @@ function drawFretboard(name) {
               if(f<0||f>FRETS) continue;
               const note=getNoteAt(s,f);
               if(!tones.includes(note)) continue;
-              const x=ML+s*SX, y=f===0?MT-4:MT+f*FY-FY/2;
-              drawDot(x,y,note,ri,col,p.root);
+              drawDot(ML+s*SX,dotY(f),note,ri,col,p.root);
             }
           }
         } else {
@@ -1762,8 +1786,7 @@ function drawFretboard(name) {
             const fret=f+off; if(fret<0||fret>FRETS) return;
             const note=getNoteAt(s,fret);
             if(!tones.includes(note)) return;
-            const x=ML+s*SX, y=fret===0?MT-4:MT+fret*FY-FY/2;
-            drawDot(x,y,note,ri,col,p?(isMinor?p.root.toLowerCase():p.root):'');
+            drawDot(ML+s*SX,dotY(fret),note,ri,col,p?(isMinor?p.root.toLowerCase():p.root):'');
           });
         }
       } else {
@@ -1779,8 +1802,7 @@ function drawFretboard(name) {
               if(f<0||f>FRETS) continue;
               const note=getNoteAt(s,f);
               if(!tones.includes(note)) continue;
-              const x=ML+s*SX, y=f===0?MT-4:MT+f*FY-FY/2;
-              drawDot(x,y,note,ri,col,p.root);
+              drawDot(ML+s*SX,dotY(f),note,ri,col,p.root);
             }
           }
         } else {
@@ -1789,12 +1811,21 @@ function drawFretboard(name) {
           const [loSpan,hiSpan]=shapeData.spanOverride||SHAPE_SPAN[sh];
           for(let s=0;s<STRS;s++){
             const [sLo,sHi]=shapeData.perStringSpan?.[s]||(shapeData.defaultSpan?shapeData.defaultSpan:[loSpan,hiSpan]);
-            for(let f=sLo+off;f<=sHi+off;f++){
+            let adjLo=sLo+off, adjHi=sHi+off;
+            // Rule: when bottom of per-string span falls below nut, extend top up the neck
+            // to recover the exact number of scale notes lost below the nut.
+            if(adjLo<0 && shapeData.belowNutExtend?.includes(s)){
+              let lost=0;
+              for(let bf=adjLo;bf<0;bf++) if(tones.includes(getNoteAt(s,bf))) lost++;
+              adjLo=0;
+              let ext=0, nf=adjHi+1;
+              while(ext<lost && nf<=FRETS){ if(tones.includes(getNoteAt(s,nf))) ext++; adjHi=nf; nf++; }
+            }
+            for(let f=adjLo;f<=adjHi;f++){
               if(f<0||f>FRETS) continue;
               const note=getNoteAt(s,f);
               if(!tones.includes(note)) continue;
-              const x=ML+s*SX, y=f===0?MT-4:MT+f*FY-FY/2;
-              drawDot(x,y,note,ri,col,p?(isMinor?p.root.toLowerCase():p.root):'');
+              drawDot(ML+s*SX,dotY(f),note,ri,col,p?(isMinor?p.root.toLowerCase():p.root):'');
             }
           }
         }
@@ -1897,17 +1928,12 @@ function micLoop(){
 }
 
 // ─── INIT ──────────────────────────────────────────────────
-document.getElementById('chart-editor').value=`4/4
-[C]
-Dm7 | G7  | Cmaj7 | Cmaj7
-Dm7 | G7  | Cmaj7 | Cmaj7
-[G]
-Am7 | D7  | Gmaj7 | Gmaj7
-Am7 | D7  | Gmaj7 | Gmaj7`;
+populateChartSelect();
+document.getElementById('chart-select').value = 'Autumn Leaves';
+document.getElementById('chart-editor').value = BUILTIN_CHARTS['Autumn Leaves'];
 
 parseAndLoad();
-drawFretboard('Dm7');
-populateChartSelect();
+drawFretboard('Am7');
 
 // Redraw fretboard on window resize to maintain aspect ratio
 window.addEventListener('resize', () => {
