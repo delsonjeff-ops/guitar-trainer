@@ -433,7 +433,7 @@ function toggleEditor() {
 // ─── MUSIC THEORY ───────────────────────────────────────────
 const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const ENHARMONIC = {Db:'C#',Eb:'D#',Gb:'F#',Ab:'G#',Bb:'A#','C#':'Db','D#':'Eb','F#':'Gb','G#':'Ab','A#':'Bb'};
-function noteIdx(n){ return NOTES.indexOf(ENHARMONIC[n]||n); }
+function noteIdx(n){ const i=NOTES.indexOf(n); return i>=0?i:NOTES.indexOf(ENHARMONIC[n]||n); }
 function noteName(i){ return NOTES[((i%12)+12)%12]; }
 
 const CHORD_INTERVALS = {
@@ -443,7 +443,7 @@ const CHORD_INTERVALS = {
   'ø7':  [0,3,6,10],'ø':   [0,3,6,10],'9':   [0,4,7,10,14],'maj9':[0,4,7,11,14],
   'm9':  [0,3,7,10,14],'6':[0,4,7,9], 'm6':  [0,3,7,9], '+':  [0,4,8],
   '7b9': [0,4,7,10,13],'7#9':[0,4,7,10,15],'7b5':[0,4,6,10],
-  '7#5': [0,4,8,10],  '7alt':[0,4,7,10,13],
+  '7#5': [0,4,8,10],  '7#5#9':[0,4,8,10,15], '7alt':[0,4,7,10,13],
 };
 
 function getPentatonic(r){ return [0,3,5,7,10].map(i=>(r+i)%12); }
@@ -515,7 +515,7 @@ function parseAndLoad() {
     // Recognize key marker: [C], [Am], [F#m], [Bb], etc. on its own line
     const keyMatch = line.match(/^\[([A-G][b#]?)(m?)\]$/);
     if (keyMatch) {
-      curKey = ENHARMONIC[keyMatch[1]] || keyMatch[1];
+      curKey = keyMatch[1];
       curKeyMinor = keyMatch[2] === 'm';
       continue;
     }
@@ -1146,12 +1146,12 @@ F#m7b5 | B7b9 | Em7 A7 | Dm7 G7
 F#m7b5 | B7b9 | Em | Em`,
   'Blue Bossa': `4/4
 [Cm]
-Cm | Cm | Fm7 | Bb7
-Ebmaj7 | Ebmaj7 | Dm7b5 | G7#5
-Cm | Cm | Dm7b5 | G7#5
-Cm | A7#9 | Dm7b5 | G7#5
-Cm | A7#9 | Dm7b5 | G7#5
-Cm`,
+Cm7 | Cm7 | Fm7 | Bb7
+G7#5#9 | Cm7 | Cm7 | Cm7
+[Db]
+Ebm7 | Ab7 | Dbmaj7 | Dbmaj7
+[Cm]
+Dm7b5 | G7b9 | Cm7 | Cm7`,
 };
 
 const SKEY = 'gt_charts';
@@ -1285,6 +1285,7 @@ const SHAPES={
     spanOverride:[-2,3],
     defaultSpan:[-2,2],
     perStringSpan:{2:[-1,2], 3:[-1,2], 4:[0,3], 5:[0,3]},
+    belowNutExtend:[2,3],
     box:[
       {s:0,f:-2},{s:0,f:0},{s:0,f:2},  // low E:  R,   2nd, 3rd
       {s:1,f:-2},{s:1,f:0},{s:1,f:2},  // A:      4th, 5th, 6th
@@ -1751,8 +1752,7 @@ function drawFretboard(name) {
             let ext=0, nf=adjHi+1;
             while(ext<lost && nf<=FRETS){ if(tones.includes(getNoteAt(s,nf))) ext++; adjHi=nf; nf++; }
           }
-          const scanHi = adjHi > sHi+off ? adjHi : winHi;
-          for(let f=adjLo; f<=scanHi; f++){
+          for(let f=adjLo; f<=adjHi; f++){
             if(f<winLo||f<0||f>FRETS) continue;
             const note = getNoteAt(s, f);
             if(!tones.includes(note)) continue;
