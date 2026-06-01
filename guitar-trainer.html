@@ -218,6 +218,14 @@ canvas#fb{display:block;flex-shrink:0}
       </div>
       <button class="btn" onclick="changeBpm(5)" style="padding:5px 9px">+</button>
     </div>
+    <div class="bpm-wrap">
+      <button class="btn" onclick="changeTranspose(-1)" style="padding:5px 9px" title="Transpose down 1 semitone">−</button>
+      <div style="text-align:center">
+        <div class="bpm-num" id="xpose-display" style="font-size:16px">0</div>
+        <div class="bpm-label">Key</div>
+      </div>
+      <button class="btn" onclick="changeTranspose(1)" style="padding:5px 9px" title="Transpose up 1 semitone">+</button>
+    </div>
     <div class="count-in" id="count-display"></div>
 
     <!-- Sound dropdown -->
@@ -432,7 +440,9 @@ function toggleEditor() {
 
 // ─── MUSIC THEORY ───────────────────────────────────────────
 const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const FLAT_NAMES = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
 const ENHARMONIC = {Db:'C#',Eb:'D#',Gb:'F#',Ab:'G#',Bb:'A#','C#':'Db','D#':'Eb','F#':'Gb','G#':'Ab','A#':'Bb'};
+const FLAT_KEY_IDX = new Set([5,10,3,8,1,6]); // F,Bb,Eb,Ab,Db,Gb
 function noteIdx(n){ const i=NOTES.indexOf(n); return i>=0?i:NOTES.indexOf(ENHARMONIC[n]||n); }
 function noteName(i){ return NOTES[((i%12)+12)%12]; }
 
@@ -494,6 +504,46 @@ function parseChordName(str) {
   return { root: ENHARMONIC[root]||root, quality };
 }
 
+// ─── TRANSPOSE ─────────────────────────────────────────────
+let transposeSteps = 0;
+
+function transposeKeyName(keyNote, steps) {
+  if (!steps) return keyNote;
+  const base = ENHARMONIC[keyNote]||keyNote;
+  const newIdx = ((noteIdx(base)+steps)%12+12)%12;
+  const txKeyIdx = ((noteIdx(base)+steps+12)%12);
+  return FLAT_KEY_IDX.has(txKeyIdx) ? FLAT_NAMES[newIdx] : NOTES[newIdx];
+}
+function shiftedNote(noteStr, steps) {
+  const base = ENHARMONIC[noteStr]||noteStr;
+  const newIdx = ((noteIdx(base)+steps)%12+12)%12;
+  const origKeyBase = ENHARMONIC[detectedKey]||detectedKey;
+  const txKeyIdx = ((noteIdx(origKeyBase)+steps)%12+12)%12;
+  return FLAT_KEY_IDX.has(txKeyIdx) ? FLAT_NAMES[newIdx] : NOTES[newIdx];
+}
+function txChord(name) {
+  if (!transposeSteps) return name;
+  const m = (name||'').match(/^([A-G][b#]?)(.*?)(?:\/([A-G][b#]?))?$/);
+  if (!m) return name;
+  return shiftedNote(m[1], transposeSteps) + (m[2]||'') + (m[3] ? '/'+shiftedNote(m[3], transposeSteps) : '');
+}
+function changeTranspose(delta) {
+  transposeSteps = ((transposeSteps + delta) % 12 + 12) % 12;
+  updateKeyDisplay();
+  buildScrollTrack();
+  // Redraw from original chordList entry to avoid double-transposing currentChordName
+  if (chordList[currentChordIdx]) drawFretboard(txChord(chordList[currentChordIdx].name));
+  updateTransposeDisplay();
+}
+function updateTransposeDisplay() {
+  const el = document.getElementById('xpose-display');
+  if (!el) return;
+  if (!transposeSteps) { el.textContent = '0'; el.style.color = ''; return; }
+  const txKey = activeKey + (activeKeyMinor ? 'm' : '');
+  el.textContent = txKey;
+  el.style.color = 'var(--accent)';
+}
+
 // ─── CHART PARSING ─────────────────────────────────────────
 let timeSig = {beats:4,division:4};
 let chordList = [];
@@ -531,9 +581,11 @@ function parseAndLoad() {
   }
   if (!chordList.length) return;
   romanOverrides = {};
+  transposeSteps = 0;
   buildScrollTrack();
   currentChordIdx=0; currentBeat=0;
   detectKey(); updateDisplay();
+  updateTransposeDisplay();
 }
 
 function detectKey() {
@@ -608,7 +660,7 @@ let detectedKey='C', detectedKeyMinor=false;
 let activeKey='C', activeKeyMinor=false; // may be overridden by user
 
 function updateKeyDisplay(){
-  activeKey = detectedKey;
+  activeKey = transposeKeyName(detectedKey, transposeSteps);
   activeKeyMinor = detectedKeyMinor;
   const keyLabel = activeKeyMinor ? activeKey+'m' : activeKey;
   document.getElementById('key-display').textContent = keyLabel;
@@ -642,7 +694,8 @@ function getRomanForCell(chIdx) {
   if (romanOverrides[chIdx] !== undefined) return romanOverrides[chIdx];
   const ch = chordList[chIdx];
   if (!ch) return '';
-  return getRomanNumeral(ch.name, ch.key, ch.keyMinor);
+  const txKey = ch.key ? transposeKeyName(ch.key, transposeSteps) : null;
+  return getRomanNumeral(txChord(ch.name), txKey, ch.keyMinor);
 }
 
 function setRomanOverride(chIdx, val) {
@@ -763,7 +816,7 @@ function buildScrollTrack() {
       cell.style.gridRow = rowIdx + 1;
 
       const rn = getRomanForCell(chIdx);
-      cell.innerHTML = `<div class="chord-name">${ch.name}</div>
+      cell.innerHTML = `<div class="chord-name">${txChord(ch.name)}</div>
         <span class="rn-span${romanOverrides[chIdx]!==undefined?' rn-override':''}"
               id="rn-${chIdx}" data-chidx="${chIdx}"
               title="Click to edit Roman numeral">${rn||'?'}</span>
@@ -831,7 +884,7 @@ function togglePause() {
     paused=false;
     beatInterval=setInterval(onBeat,(60/bpm)*1000);
     document.getElementById('pause-btn').textContent='⏸ Pause';
-    playChordSound(chordList[currentChordIdx].name);
+    playChordSound(txChord(chordList[currentChordIdx].name));
     if(document.fullscreenElement===null && document.documentElement.requestFullscreen)
       document.documentElement.requestFullscreen().catch(()=>{});
   } else {
@@ -862,7 +915,7 @@ function startPlay() {
   document.getElementById('pause-btn').style.display='';
   if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{});
   updateDisplay();
-  playChordSound(chordList[0].name);
+  playChordSound(txChord(chordList[0].name));
   onBeat(); // fire beat 1 immediately in sync with chord sound
   beatInterval=setInterval(onBeat,(60/bpm)*1000);
 }
@@ -890,7 +943,7 @@ function onBeat() {
     currentBeat=0;
     currentChordIdx=(currentChordIdx+1)%chordList.length;
     updateDisplay();
-    playChordSound(chordList[currentChordIdx].name);
+    playChordSound(txChord(chordList[currentChordIdx].name));
   }
   // Fire this beat — beat 0 is the downbeat (strong click)
   const dot=document.getElementById(`dot-${currentChordIdx}-${currentBeat}`);
@@ -908,12 +961,12 @@ function jumpToChord(idx) {
   updateDisplay();
   if (playing && !paused) {
     clearInterval(beatInterval);
-    playChordSound(chordList[idx].name);
+    playChordSound(txChord(chordList[idx].name));
     onBeat(); // beat 1 in sync
     beatInterval = setInterval(onBeat, (60/bpm)*1000);
   } else if (!playing) {
     // Not playing - just show the chord on the fretboard
-    drawFretboard(chordList[idx].name);
+    drawFretboard(txChord(chordList[idx].name));
   }
 }
 
@@ -926,12 +979,13 @@ function updateDisplay() {
   if(!ch) return;
   // If this chord has an explicit key (from [KEY] marker) different from the current
   // active key, switch keys before redrawing. setKey handles the redraw.
-  if (ch.key && (ch.key !== activeKey || ch.keyMinor !== activeKeyMinor)) {
-    currentChordName = ch.name; // ensure setKey's drawFretboard uses the new chord
-    setKey(ch.key, ch.keyMinor);
+  const chKeyTx = ch.key ? transposeKeyName(ch.key, transposeSteps) : null;
+  if (chKeyTx && (chKeyTx !== activeKey || ch.keyMinor !== activeKeyMinor)) {
+    currentChordName = txChord(ch.name);
+    setKey(chKeyTx, ch.keyMinor);
     return;
   }
-  drawFretboard(ch.name);
+  drawFretboard(txChord(ch.name));
 }
 
 // ─── AUDIO ─────────────────────────────────────────────────
@@ -1688,40 +1742,30 @@ function drawFretboard(name) {
   const winCol = positionLocked ? SC[activePosition] : null;
 
   if(positionLocked){
-    // Position locked: the neck REGION is fixed (anchored to key tonic in activePosition form),
-    // but the actual CAGED form coloring follows which form the CHORD's root falls into.
-    // e.g. locked to A-position, Cmaj7 playing → C root lands in D-form area → D-form color.
-
     const rootLabel = p ? (isMinor ? p.root.toLowerCase() : p.root) : '';
 
-    // Key tonic anchor — defines the neck region
-    const keyRi2 = noteIdx(activeKey);
-    const tonicRi2 = activeKeyMinor ? (keyRi2 + 3) % 12 : keyRi2;
-
-    // Determine which CAGED form the current chord's root falls into within the window.
-    // Check each form: compute where its root lands for THIS chord's root (ri),
-    // and see if that root fret is inside [winLo, winHi].
-    let chordForm = activePosition; // fallback
-    const formOrder = ['E','D','C','A','G']; // CAGED order ascending neck
-    for(const testSh of formOrder){
-      const testOff = getOffset(testSh, ri, isMinor);
-      const testShapeData = SHAPES[testSh];
-      const [tLo, tHi] = testShapeData.spanOverride || SHAPE_SPAN[testSh];
-      // Root fret for this form/chord
-      const rootFret = testOff; // offset IS the fret of the lowest root dot (f=0 in box)
-      // Actually: root dot is at SOF[sh] + off relative to open. Let's use anchor string.
-      // Simpler: check if any root dot from this form lands in the window
-      const roots = testShapeData.roots || [];
-      const inWindow = roots.some(({s, f}) => {
-        const fret = f + testOff;
-        return fret >= winLo && fret <= winHi;
-      });
-      if(inWindow){ chordForm = testSh; break; }
+    // Color: find the CAGED form whose root dot lands nearest to the anchor fret.
+    // Anchor fret = where the key tonic sits in the locked shape (e.g. fret 8, G-string for Cm/G).
+    // Primary root = SOR/SOF anchor; also check roots[] array for major-quality chords.
+    // Tiebreak by offset proximity. Dim/half-dim use major offsets (no meaningful minor CAGED pos).
+    const isMinorPos = ['m','m7','mM7','m9','m6'].includes(p?.quality) ? isMinor : false;
+    const anchorOffset = getOffset(activePosition, noteIdx(activeKey), activeKeyMinor);
+    let bestShape = activePosition, bestRD = Infinity, bestOD = Infinity;
+    for(const sh of ['E','A','G','C','D']){
+      const testOff = getOffset(sh, ri, isMinorPos);
+      const prf = (isMinorPos && SOF_MINOR[sh]!==undefined ? SOF_MINOR[sh] : SOF[sh]) + testOff;
+      const rfs = [prf, ...(isMinorPos ? [] : (SHAPES[sh].roots||[]).map(r=>r.f+testOff))].filter(f=>f>=0);
+      const rd = rfs.length ? Math.min(...rfs.map(f=>Math.abs(f-anchorOffset))) : Infinity;
+      const od = Math.abs(testOff - anchorOffset);
+      if(rd < bestRD || (rd === bestRD && od < bestOD)){ bestRD=rd; bestOD=od; bestShape=sh; }
     }
+    const col = SC[bestShape];
 
-    const col = SC[chordForm];
-    const sh = activePosition; // still use activePosition's BOX for dot placement
+    // Dot placement: always locked shape at tonic offset — all chords share the same window.
+    const sh = activePosition;
     const shapeData = SHAPES[sh];
+    const keyRi2 = noteIdx(activeKey);
+    const tonicRi2 = activeKeyMinor ? (keyRi2+3)%12 : keyRi2;
     const off = getOffset(sh, tonicRi2, false);
     const [loSpan, hiSpan] = shapeData.spanOverride || SHAPE_SPAN[sh];
 
@@ -1732,32 +1776,24 @@ function drawFretboard(name) {
         drawDot(ML+s*SX,dotY(f),note,ri,col,rootLabel);
       }
     } else {
-      // Scale mode
-      if (p && (p.quality === '7b9' || p.quality === '7')) {
-        const extLo = winLo - 1, extHi = winHi + 1;
-        for(let s=0;s<STRS;s++) for(let f=extLo;f<=extHi;f++){
-          if(f<0||f>FRETS) continue;
-          const note=getNoteAt(s,f); if(!tones.includes(note)) continue;
-          drawDot(ML+s*SX,dotY(f),note,ri,col,rootLabel);
+      for(let s=0; s<STRS; s++){
+        const [sLo, sHi] = shapeData.perStringSpan?.[s] ||
+                           (shapeData.defaultSpan ? shapeData.defaultSpan : [loSpan, hiSpan]);
+        let adjLo=sLo+off, adjHi=sHi+off;
+        if(adjLo<0 && shapeData.belowNutExtend?.includes(s)){
+          let lost=0;
+          for(let bf=adjLo;bf<0;bf++) if(tones.includes(getNoteAt(s,bf))) lost++;
+          adjLo=0;
+          let ext=0, nf=adjHi+1;
+          while(ext<lost && nf<=FRETS){ if(tones.includes(getNoteAt(s,nf))) ext++; adjHi=nf; nf++; }
+        } else if(adjLo>=0 && shapeData.belowNutExtend?.includes(s) && shapeData.defaultSpan){
+          adjLo=Math.max(adjLo, shapeData.defaultSpan[0]+off);
         }
-      } else {
-        for(let s=0; s<STRS; s++){
-          const [sLo, sHi] = shapeData.perStringSpan?.[s] ||
-                             (shapeData.defaultSpan ? shapeData.defaultSpan : [loSpan, hiSpan]);
-          let adjLo=sLo+off, adjHi=sHi+off;
-          if(adjLo<0 && shapeData.belowNutExtend?.includes(s)){
-            let lost=0;
-            for(let bf=adjLo;bf<0;bf++) if(tones.includes(getNoteAt(s,bf))) lost++;
-            adjLo=0;
-            let ext=0, nf=adjHi+1;
-            while(ext<lost && nf<=FRETS){ if(tones.includes(getNoteAt(s,nf))) ext++; adjHi=nf; nf++; }
-          }
-          for(let f=adjLo; f<=adjHi; f++){
-            if(f<winLo||f<0||f>FRETS) continue;
-            const note = getNoteAt(s, f);
-            if(!tones.includes(note)) continue;
-            drawDot(ML+s*SX, dotY(f), note, ri, col, rootLabel);
-          }
+        for(let f=adjLo; f<=adjHi; f++){
+          if(f<0||f>FRETS) continue;
+          const note = getNoteAt(s, f);
+          if(!tones.includes(note)) continue;
+          drawDot(ML+s*SX, dotY(f), note, ri, col, rootLabel);
         }
       }
     }
@@ -1820,6 +1856,8 @@ function drawFretboard(name) {
               adjLo=0;
               let ext=0, nf=adjHi+1;
               while(ext<lost && nf<=FRETS){ if(tones.includes(getNoteAt(s,nf))) ext++; adjHi=nf; nf++; }
+            } else if(adjLo>=0 && shapeData.belowNutExtend?.includes(s) && shapeData.defaultSpan){
+              adjLo=Math.max(adjLo, shapeData.defaultSpan[0]+off);
             }
             for(let f=adjLo;f<=adjHi;f++){
               if(f<0||f>FRETS) continue;
